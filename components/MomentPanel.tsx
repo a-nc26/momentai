@@ -34,7 +34,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
   const [isCascading, setIsCascading] = useState(false);
   const [cascadeCount, setCascadeCount] = useState(0);
 
-  const { appMap, selectMoment, updateMoment, setMomentMock, addMoments, removeEdges, flagMoments, clearAllFlags, batchUpdateMoments, flaggedMoments, isEditing, setEditing } =
+  const { appMap, selectMoment, updateMoment, setMomentMock, addMoments, removeEdges, flagMoments, clearAllFlags, clearFlag, batchUpdateMoments, flaggedMoments, isEditing, setEditing } =
     useMomentaiStore();
 
   const flagReason = flaggedMoments[moment.id];
@@ -97,7 +97,6 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
           .then((r) => r.json())
           .then((result) => {
             if (result.updates) batchUpdateMoments(result.updates);
-            clearAllFlags();
           })
           .catch(console.error)
           .finally(() => setIsCascading(false));
@@ -144,11 +143,20 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
         </div>
       )}
 
-      {/* Upstream impact note (flagged but cascade done or pending) */}
+      {/* Downstream impact note — persists until user dismisses */}
       {flagReason && !isCascading && (
         <div className="mx-4 mt-3 shrink-0 flex items-start gap-2 bg-amber-500/5 border border-amber-500/20 rounded-xl px-3 py-2.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1" />
-          <p className="text-amber-300/70 text-xs leading-relaxed">{flagReason}</p>
+          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5" />
+          <p className="text-amber-300/70 text-xs leading-relaxed flex-1">{flagReason}</p>
+          <button
+            onClick={() => clearFlag(moment.id)}
+            className="text-amber-500/50 hover:text-amber-400 transition-colors shrink-0 ml-1"
+            aria-label="Dismiss"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
         </div>
       )}
 

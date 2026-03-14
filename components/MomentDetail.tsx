@@ -61,7 +61,7 @@ export default function MomentDetail({ moment }: { moment: Moment }) {
     addMoments,
     removeEdges,
     flagMoments,
-    clearAllFlags,
+    clearFlag,
     batchUpdateMoments,
     flaggedMoments,
     isEditing,
@@ -165,7 +165,6 @@ export default function MomentDetail({ moment }: { moment: Moment }) {
           .then((r) => r.json())
           .then((result) => {
             if (result.updates) batchUpdateMoments(result.updates);
-            clearAllFlags();
           })
           .catch(console.error)
           .finally(() => setIsCascading(false));
@@ -276,11 +275,20 @@ export default function MomentDetail({ moment }: { moment: Moment }) {
               </div>
             )}
 
-            {/* Upstream impact note */}
+            {/* Downstream impact note — persists until user dismisses */}
             {flagReason && !isCascading && (
               <div className="m-4 flex items-start gap-2 bg-amber-500/5 border border-amber-500/20 rounded-xl px-3 py-2.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1" />
-                <p className="text-amber-300/70 text-xs leading-relaxed">{flagReason}</p>
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5" />
+                <p className="text-amber-300/70 text-xs leading-relaxed flex-1">{flagReason}</p>
+                <button
+                  onClick={() => clearFlag(moment.id)}
+                  className="text-amber-500/50 hover:text-amber-400 transition-colors shrink-0 ml-1"
+                  aria-label="Dismiss"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                </button>
               </div>
             )}
 

@@ -159,6 +159,7 @@ export default function StreamingMockFrame({
             ref={iframeRef}
             title="Screen preview"
             scrolling="no"
+            sandbox="allow-scripts allow-same-origin"
             style={{
               border: 'none',
               width: 390,
