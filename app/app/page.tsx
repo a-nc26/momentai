@@ -9,6 +9,7 @@ import Canvas from '@/components/Canvas';
 import MomentPanel from '@/components/MomentPanel';
 import ReactRuntime from '@/components/runtime/ReactRuntime';
 import { DEMO_MAP } from '@/lib/demo';
+import { FIXTURE_MAP } from '@/lib/fixture';
 import { createProject, updateProject } from '@/lib/projects';
 
 function DemoLoader() {
@@ -89,6 +90,7 @@ export default function AppPage() {
     appMap,
     selectedMomentId,
     reset,
+    setAppMap,
     hasHydrated,
     builtAppUrl,
     setBuiltAppUrl,
@@ -97,6 +99,11 @@ export default function AppPage() {
     setMomentComponentCode,
     setMomentBuildStatus,
   } = useMomentaiStore();
+
+  const loadFixture = useCallback(() => {
+    reset();
+    setAppMap(FIXTURE_MAP);
+  }, [reset, setAppMap]);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [buildProgress, setBuildProgress] = useState({ done: 0, total: 0 });
@@ -218,6 +225,17 @@ export default function AppPage() {
           <div className="w-2 h-2 rounded-full bg-indigo-500" />
           <span className="text-white font-semibold text-sm tracking-tight">Momentum</span>
         </div>
+        {!validAppMap && (
+          <>
+            <div className="flex-1" />
+            <button
+              onClick={loadFixture}
+              className="text-amber-400 hover:text-amber-300 text-xs border border-amber-800/60 hover:border-amber-600 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+            >
+              ⚡ Quick Test
+            </button>
+          </>
+        )}
         {validAppMap && (
           <>
             <span className="text-zinc-700">/</span>
@@ -267,6 +285,13 @@ export default function AppPage() {
               className="text-zinc-500 hover:text-zinc-300 text-xs border border-zinc-800 hover:border-zinc-600 px-3 py-1.5 rounded-lg transition-all"
             >
               My Projects
+            </button>
+            <button
+              onClick={loadFixture}
+              title="Load pre-built ParkPals fixture — no API calls"
+              className="text-amber-400 hover:text-amber-300 text-xs border border-amber-800/60 hover:border-amber-600 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1.5 rounded-lg transition-all"
+            >
+              ⚡ Quick Test
             </button>
             <button
               onClick={() => { reset(); router.push('/app'); }}
