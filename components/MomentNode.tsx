@@ -27,10 +27,14 @@ type MomentNodeData = {
   hasSubflow?: boolean;
   subflowCount?: number;
   branchCount?: number;
+  active?: boolean;
+  buildStatus?: 'idle' | 'building' | 'done' | 'error';
 };
 
 export default function MomentNode({ data, selected }: NodeProps) {
-  const { moment, color, journeyName, flagged, flagReason, hasSubflow, subflowCount, branchCount } = data as MomentNodeData;
+  const { moment, color, journeyName, flagged, flagReason, hasSubflow, subflowCount, branchCount, active, buildStatus } = data as MomentNodeData;
+
+  const isActive = active && !selected;
 
   return (
     <div
@@ -41,12 +45,16 @@ export default function MomentNode({ data, selected }: NodeProps) {
           ? '2px solid #f59e0b'
           : selected
           ? `2px solid ${color}`
+          : isActive
+          ? `2px solid ${color}`
           : '2px solid transparent',
         outlineOffset: '3px',
         boxShadow: flagged
           ? '0 0 0 4px rgba(245,158,11,0.2), 0 0 32px rgba(245,158,11,0.3)'
           : selected
           ? `0 0 0 4px ${color}55, 0 0 40px ${color}60, 0 0 80px ${color}25`
+          : isActive
+          ? `0 0 0 3px ${color}40, 0 0 24px ${color}30`
           : undefined,
         transform: selected ? 'scale(1.03)' : undefined,
       }}
@@ -58,19 +66,32 @@ export default function MomentNode({ data, selected }: NodeProps) {
       />
 
       <div className="p-4">
-        {/* Journey label */}
+        {/* Journey label + status */}
         <div className="flex items-center justify-between mb-3">
           <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: flagged ? '#f59e0b' : color }}>
             {journeyName}
           </span>
-          {flagged ? (
+          {buildStatus === 'building' ? (
+            <span className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-indigo-400 bg-indigo-400/10">
+              <span className="w-2.5 h-2.5 rounded-full border border-indigo-400/40 border-t-indigo-400 animate-spin" />
+              Building
+            </span>
+          ) : buildStatus === 'done' ? (
+            <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-emerald-400 bg-emerald-400/10">
+              ✓ Built
+            </span>
+          ) : buildStatus === 'error' ? (
+            <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-red-400 bg-red-400/10">
+              Error
+            </span>
+          ) : flagged ? (
             <span
               className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
               style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.12)' }}
             >
               Review
             </span>
-          ) : selected ? (
+          ) : isActive ? (
             <span
               className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded animate-pulse"
               style={{ color: '#fff', background: color }}
@@ -87,7 +108,7 @@ export default function MomentNode({ data, selected }: NodeProps) {
           )}
         </div>
 
-        {/* Flag reason — shown when flagged */}
+        {/* Flag reason */}
         {flagged && flagReason && (
           <div className="mb-2 text-[10px] text-amber-500/80 leading-relaxed line-clamp-2 bg-amber-500/5 border border-amber-500/15 rounded-lg px-2 py-1.5">
             {flagReason}

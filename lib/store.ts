@@ -7,7 +7,8 @@ interface MomentaiStore {
   appMap: AppMap | null;
   selectedMomentId: string | null;
   detailMomentId: string | null;
-  flaggedMoments: Record<string, string>; // momentId → reason
+  activeMomentId: string | null;
+  flaggedMoments: Record<string, string>;
   isGenerating: boolean;
   isEditing: boolean;
   hasHydrated: boolean;
@@ -19,9 +20,12 @@ interface MomentaiStore {
   setAppMap: (map: AppMap) => void;
   selectMoment: (id: string | null) => void;
   setDetailMoment: (id: string | null) => void;
+  setActiveMomentId: (id: string | null) => void;
   updateMoment: (momentId: string, updates: Partial<Moment>) => void;
   updateAppRuntime: (updates: { stateSchema?: RuntimeStateField[]; initialState?: Record<string, RuntimeValue>; runtimeVersion?: 1; appPlatform?: 'mobile' | 'web' }) => void;
   setMomentMock: (momentId: string, mockHtml: string) => void;
+  setMomentComponentCode: (momentId: string, code: string) => void;
+  setMomentBuildStatus: (momentId: string, status: 'idle' | 'building' | 'done' | 'error') => void;
   addMoments: (moments: Moment[], edges: FlowEdge[]) => void;
   removeEdges: (edgeIds: string[]) => void;
   batchUpdateMoments: (updates: Record<string, Partial<Moment>>) => void;
@@ -43,6 +47,7 @@ export const useMomentaiStore = create<MomentaiStore>()(
       appMap: null,
       selectedMomentId: null,
       detailMomentId: null,
+      activeMomentId: null,
       flaggedMoments: {},
       isGenerating: false,
       isEditing: false,
@@ -58,6 +63,7 @@ export const useMomentaiStore = create<MomentaiStore>()(
           appMap: normalizeRuntimeAppMap(appMap),
           selectedMomentId: null,
           detailMomentId: null,
+          activeMomentId: null,
           flaggedMoments: {},
           builtAppUrl: null,
           builtHtml: null,
@@ -66,6 +72,8 @@ export const useMomentaiStore = create<MomentaiStore>()(
       selectMoment: (selectedMomentId) => set({ selectedMomentId }),
 
       setDetailMoment: (detailMomentId) => set({ detailMomentId }),
+
+      setActiveMomentId: (activeMomentId) => set({ activeMomentId }),
 
       updateMoment: (momentId, updates) =>
         set((state) => {
@@ -99,6 +107,32 @@ export const useMomentaiStore = create<MomentaiStore>()(
             ),
           });
           return { appMap: nextAppMap };
+        }),
+
+      setMomentComponentCode: (momentId, code) =>
+        set((state) => {
+          if (!state.appMap) return state;
+          return {
+            appMap: {
+              ...state.appMap,
+              moments: state.appMap.moments.map((m) =>
+                m.id === momentId ? { ...m, componentCode: code, buildStatus: 'done' as const } : m
+              ),
+            },
+          };
+        }),
+
+      setMomentBuildStatus: (momentId, status) =>
+        set((state) => {
+          if (!state.appMap) return state;
+          return {
+            appMap: {
+              ...state.appMap,
+              moments: state.appMap.moments.map((m) =>
+                m.id === momentId ? { ...m, buildStatus: status } : m
+              ),
+            },
+          };
         }),
 
       addMoments: (moments, edges) =>
@@ -167,6 +201,7 @@ export const useMomentaiStore = create<MomentaiStore>()(
         appMap: null,
         selectedMomentId: null,
         detailMomentId: null,
+        activeMomentId: null,
         flaggedMoments: {},
         isGenerating: false,
         isEditing: false,

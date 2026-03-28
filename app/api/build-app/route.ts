@@ -1,276 +1,112 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { put } from '@vercel/blob';
-import { AppMap } from '@/lib/types';
+import { AppMap, Moment } from '@/lib/types';
 
 const client = new Anthropic();
 
-function buildPrompt(appMap: AppMap): string {
-  const momentsSummary = appMap.moments.map((m) => {
-    const actions = m.screenSpec?.actions?.map((a) =>
-      `  - "${a.label}" (${a.kind}${a.target ? ` → ${a.target}` : ''}${a.branchKey ? `, branch on ${a.branchKey}` : ''})`
-    ).join('\n') ?? '';
-    const components = m.screenSpec?.components?.map((c) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const cc = c as any;
-      return `  - ${c.type}${cc.label ? `: "${cc.label}"` : ''}${cc.title ? ` title="${cc.title}"` : ''}${cc.placeholder ? ` placeholder="${cc.placeholder}"` : ''}${cc.stateKey ? ` stateKey=${cc.stateKey}` : ''}`;
-    }).join('\n') ?? '';
-    return `### Moment: ${m.id}
-Label: ${m.label}
-Journey: ${appMap.journeys.find((j) => j.id === m.journeyId)?.name ?? m.journeyId}
-Type: ${m.type}
-Description: ${m.description}
-Preview: ${m.preview}
-Screen title: ${m.screenSpec?.title ?? m.label}
-Screen subtitle: ${m.screenSpec?.subtitle ?? ''}
-Components:
-${components || '  (none)'}
-Actions:
-${actions || '  (none)'}`;
-  }).join('\n\n');
+const FORBIDDEN_PATTERNS = /lorem|placeholder|tbd|coming soon|user name|item title/i;
 
-  const edgesSummary = appMap.edges.map((e) =>
-    `${e.source} → ${e.target}`
+const COMPONENT_SYSTEM_PROMPT = `You are generating a single screen component for a mobile/web app.
+Stack: React + Tailwind CSS + shadcn-style UI components available on window.UI.
+
+STRICT RULES — violation of any of these is a failure:
+- NEVER use placeholder text. Invent realistic, specific content.
+- NEVER write "Lorem ipsum", "Coming soon", "TBD", "User Name", "Item Title", "Description here", or any placeholder equivalent.
+- Every button must trigger a visible action — navigation, state change, or UI feedback.
+- Every form must have real field labels, real placeholder examples, and real validation states.
+- Use window.UI components throughout. Available: Button, Card, CardHeader, CardContent, CardTitle, CardDescription, CardFooter, Input, Badge, Avatar, AvatarFallback, Separator, Tabs, TabsList, TabsTrigger, TabsContent, Sheet, SheetContent, SheetHeader, SheetTitle, Dialog, DialogContent, DialogHeader, DialogTitle, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Label, Switch, Textarea.
+- Access them via: const { Button, Card, Input, Badge, ... } = window.UI;
+- Mobile-first layout using Tailwind flex, gap, and padding. No fixed pixel widths.
+- Invent realistic data: real names, real prices, real dates, real copy. The screen must look like a shipped product, not a wireframe.
+- The component must be self-contained. No imports. React is globally available (React, useState, useEffect, etc. are on window).
+- Do NOT use import statements at all.
+- Do NOT use export statements. Assign the component to window.__SCREEN_COMPONENT__ instead.
+
+COMPONENT INTERFACE:
+The component receives these props:
+- state: object — the current app state
+- onNavigate: (momentId: string) => void — call this to move to another screen
+- onStateChange: (key: string, value: any) => void — call this to update app state
+
+Write the component as:
+window.__SCREEN_COMPONENT__ = function ScreenComponent({ state, onNavigate, onStateChange }) {
+  // component body using React hooks, window.UI components, Tailwind classes
+};
+
+Return ONLY the JavaScript code. No explanation. No markdown fences. No imports. No exports.`;
+
+function buildUserPrompt(moment: Moment, appMap: AppMap): string {
+  const journey = appMap.journeys.find((j) => j.id === moment.journeyId);
+  const connectedEdges = appMap.edges.filter(
+    (e) => e.source === moment.id || e.target === moment.id
+  );
+  const connectedMoments = connectedEdges.map((e) => {
+    const targetId = e.source === moment.id ? e.target : e.source;
+    const target = appMap.moments.find((m) => m.id === targetId);
+    return `  - ${e.source === moment.id ? '→' : '←'} "${target?.label ?? targetId}" (id: ${targetId})${e.label ? ` [${e.label}]` : ''}`;
+  }).join('\n');
+
+  const stateSchema = (appMap.stateSchema ?? []).map((f) =>
+    `  ${f.key}: ${f.type}${f.defaultValue !== undefined ? ` (default: ${JSON.stringify(f.defaultValue)})` : ''}`
   ).join('\n');
 
-  const stateFields = (appMap.stateSchema ?? []).map((f) =>
-    `  ${f.key} (${f.type}, default: ${JSON.stringify(f.defaultValue ?? '')})`
-  ).join('\n');
+  const screenComponents = moment.screenSpec?.components?.map((c) => {
+    const cc = c as Record<string, unknown>;
+    return `  - ${c.type}${cc.label ? `: "${cc.label}"` : ''}${cc.title ? ` title="${cc.title}"` : ''}`;
+  }).join('\n') ?? '  (none specified)';
 
-  // Derive accent color from app description/name for visual identity
-  const desc = (appMap.appDescription + ' ' + appMap.appName).toLowerCase();
-  let accentHex = '#6366f1'; // default indigo
-  let accentLight = '#eef2ff';
-  let accentBorder = '#c7d2fe';
-  let accentDark = '#4f46e5';
-  if (desc.match(/finance|money|invest|budget|expense|bank|wealth|saving|mortgage|loan|real.?estate|home.buy/)) {
-    accentHex = '#10b981'; accentLight = '#ecfdf5'; accentBorder = '#a7f3d0'; accentDark = '#059669';
-  } else if (desc.match(/health|fitness|workout|gym|nutrition|diet|wellness|run|exercise|sport/)) {
-    accentHex = '#8b5cf6'; accentLight = '#f5f3ff'; accentBorder = '#ddd6fe'; accentDark = '#7c3aed';
-  } else if (desc.match(/food|cook|recipe|restaurant|meal|eat|delivery|grocery/)) {
-    accentHex = '#f97316'; accentLight = '#fff7ed'; accentBorder = '#fed7aa'; accentDark = '#ea580c';
-  } else if (desc.match(/travel|trip|hotel|flight|vacation|booking|destination/)) {
-    accentHex = '#0ea5e9'; accentLight = '#f0f9ff'; accentBorder = '#bae6fd'; accentDark = '#0284c7';
-  } else if (desc.match(/social|friend|chat|community|network|dating|connect/)) {
-    accentHex = '#ec4899'; accentLight = '#fdf2f8'; accentBorder = '#fbcfe8'; accentDark = '#db2777';
-  } else if (desc.match(/learn|course|education|study|school|quiz|skill/)) {
-    accentHex = '#f59e0b'; accentLight = '#fffbeb'; accentBorder = '#fde68a'; accentDark = '#d97706';
-  }
+  const screenActions = moment.screenSpec?.actions?.map((a) =>
+    `  - "${a.label}" (${a.kind}${a.target ? ` → ${a.target}` : ''})`
+  ).join('\n') ?? '  (none specified)';
 
-  return `You are building a BEAUTIFUL, production-quality single-page app as one self-contained HTML file. The quality bar is Stripe, Linear, or Lovable — not a bootstrap template. Every screen must look like it was designed by a professional product designer.
-
-APP: ${appMap.appName}
+  return `APP: ${appMap.appName}
 DESCRIPTION: ${appMap.appDescription}
-ACCENT COLOR: ${accentHex} (use this as your primary/brand color throughout)
+PLATFORM: ${appMap.appPlatform ?? 'mobile'}
 
-STATE FIELDS:
-${stateFields || '  (none)'}
+SCREEN TO BUILD:
+- Label: ${moment.label}
+- Description: ${moment.description}
+- Type: ${moment.type}
+- Journey: ${journey?.name ?? moment.journeyId}
+- Screen title: ${moment.screenSpec?.title ?? moment.label}
+- Screen subtitle: ${moment.screenSpec?.subtitle ?? ''}
 
-NAVIGATION GRAPH (edges):
-${edgesSummary}
+Screen components:
+${screenComponents}
 
-SCREENS:
-${momentsSummary}
+Screen actions:
+${screenActions}
 
----
+Connected screens:
+${connectedMoments || '  (none)'}
 
-TECHNICAL REQUIREMENTS:
+State schema:
+${stateSchema || '  (none)'}
 
-1. **Single HTML file** — Tailwind CDN v3 (https://cdn.tailwindcss.com), vanilla JS, no React/Vue
-2. **Every screen** is a <div class="screen" id="screen-{momentId}"> (display:none by default, shown via showScreen())
-3. **State object** — JS object 'state' holds all values; inputs/selections write to state on change
-4. **Navigation** — showScreen(id) hides all screens, shows target, sends postMessage, saves to localStorage
-5. **Branching** — branch actions evaluate state[branchKey] against branch values, navigate to matching target
-6. **Templating** — replace {{key}} in any text with state[key] value
-7. **Required keys** — primary buttons are disabled until all requiredKeys in state are non-empty
-8. **postMessage sync** — in showScreen(id): add \`if(window.parent!==window)window.parent.postMessage({type:'screenChanged',momentId:id},'*');\`
-9. **postMessage listener** — \`window.addEventListener('message',function(e){if(e.data&&e.data.type==='navigate'&&e.data.momentId)showScreen(e.data.momentId);});\`
-10. **localStorage** — persist state on every change, restore on load
-11. Start screen: ${appMap.moments[0]?.id ?? ''}
-
----
-
-DESIGN SYSTEM — FOLLOW EXACTLY:
-
-**CSS Variables** — set these in <style> in <head>:
-\`\`\`
-:root {
-  --accent: ${accentHex};
-  --accent-light: ${accentLight};
-  --accent-border: ${accentBorder};
-  --accent-dark: ${accentDark};
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+Build this screen now. Use window.UI components and Tailwind classes. Invent realistic content specific to "${appMap.appName}" — a ${appMap.appDescription}.`;
 }
-\`\`\`
 
-**App shell** — full-height, subtle gradient background:
-\`\`\`html
-<body style="background: linear-gradient(135deg, ${accentLight} 0%, #f9fafb 60%, #ffffff 100%); min-height:100vh;">
-  <div style="max-width:390px;margin:0 auto;min-height:100vh;position:relative;background:white;box-shadow:0 0 40px rgba(0,0,0,0.08);">
-    <!-- screens go here -->
-  </div>
-</body>
-\`\`\`
+async function generateScreenComponent(
+  moment: Moment,
+  appMap: AppMap
+): Promise<string> {
+  const userPrompt = buildUserPrompt(moment, appMap);
 
-**Screen layout:**
-\`\`\`html
-<div class="screen" id="screen-{id}" style="display:none;min-height:100vh;display:flex;flex-direction:column;">
-  <!-- optional progress bar at top -->
-  <!-- scrollable content area -->
-  <div style="flex:1;overflow-y:auto;padding:24px 20px 100px;">
-    <!-- content -->
-  </div>
-  <!-- fixed action button area -->
-  <div style="position:sticky;bottom:0;padding:16px 20px 28px;background:linear-gradient(transparent,white 30%);z-index:10;">
-    <!-- primary button -->
-  </div>
-</div>
-\`\`\`
+  const message = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4096,
+    system: COMPONENT_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userPrompt }],
+  });
 
-**Progress bar** (when a screen has progress info):
-\`\`\`html
-<div style="padding:16px 20px 0;">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-    <span style="font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent)">Step X of Y</span>
-    <button onclick="goBack()" style="font-size:13px;color:#9ca3af;background:none;border:none;cursor:pointer;">✕</button>
-  </div>
-  <div style="height:3px;background:#f3f4f6;border-radius:2px;">
-    <div style="height:3px;width:X%;background:var(--accent);border-radius:2px;transition:width 0.4s ease;"></div>
-  </div>
-</div>
-\`\`\`
+  let code = (message.content[0] as { type: string; text: string }).text.trim();
 
-**Hero component:**
-\`\`\`html
-<div style="padding:32px 0 24px;">
-  <h1 style="font-size:28px;font-weight:800;color:#111827;line-height:1.2;letter-spacing:-0.02em;margin:0 0 10px;">{title}</h1>
-  <p style="font-size:15px;color:#6b7280;line-height:1.6;margin:0;">{body}</p>
-</div>
-\`\`\`
+  code = code
+    .replace(/^```(?:javascript|jsx|js|tsx)?\n?/i, '')
+    .replace(/\n?```$/, '')
+    .trim();
 
-**Input component:**
-\`\`\`html
-<div style="margin-bottom:16px;">
-  <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">{label}</label>
-  <input type="text" placeholder="{placeholder}"
-    style="width:100%;padding:13px 15px;border:1.5px solid #e5e7eb;border-radius:12px;font-size:15px;color:#111827;background:white;outline:none;box-sizing:border-box;transition:border-color 0.15s;"
-    onfocus="this.style.borderColor='var(--accent)'"
-    onblur="this.style.borderColor='#e5e7eb'"
-    onchange="state['{key}']=this.value;saveState();updateButtons();" />
-</div>
-\`\`\`
-
-**Choice-cards component** (REQUIRED for any selection — never use plain radio buttons):
-\`\`\`html
-<div style="margin-bottom:20px;">
-  <p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 10px;">{label}</p>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-    <!-- For each option: -->
-    <div onclick="selectChoice('{key}', '{value}', this, {isMulti})"
-      style="border:2px solid #e5e7eb;border-radius:14px;padding:14px 12px;cursor:pointer;transition:all 0.15s;background:white;text-align:center;">
-      <div style="font-size:22px;margin-bottom:6px;">{icon or emoji}</div>
-      <div style="font-size:13px;font-weight:600;color:#111827;">{label}</div>
-      <div style="font-size:11px;color:#9ca3af;margin-top:2px;">{description if any}</div>
-    </div>
-  </div>
-</div>
-\`\`\`
-JS for selectChoice:
-\`\`\`js
-function selectChoice(key, value, el, isMulti) {
-  if (isMulti) {
-    if (!Array.isArray(state[key])) state[key] = [];
-    const idx = state[key].indexOf(value);
-    if (idx > -1) { state[key].splice(idx, 1); el.style.borderColor='#e5e7eb'; el.style.background='white'; el.style.color='#111827'; }
-    else { state[key].push(value); el.style.borderColor='var(--accent)'; el.style.background='var(--accent-light)'; }
-  } else {
-    const parent = el.parentElement;
-    parent.querySelectorAll('[onclick]').forEach(c => { c.style.borderColor='#e5e7eb'; c.style.background='white'; });
-    state[key] = value; el.style.borderColor='var(--accent)'; el.style.background='var(--accent-light)';
-  }
-  saveState(); updateButtons();
-}
-\`\`\`
-
-**Chip-group component:**
-\`\`\`html
-<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">
-  <button onclick="toggleChip('{key}', '{value}', this)"
-    style="padding:8px 16px;border-radius:999px;border:1.5px solid #e5e7eb;background:white;font-size:13px;font-weight:500;color:#374151;cursor:pointer;transition:all 0.15s;">
-    {label}
-  </button>
-</div>
-\`\`\`
-
-**Stats-grid component:**
-\`\`\`html
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-  <div style="background:var(--accent-light);border:1px solid var(--accent-border);border-radius:16px;padding:16px;">
-    <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">{label}</div>
-    <div style="font-size:24px;font-weight:800;color:#111827;">{value}</div>
-  </div>
-</div>
-\`\`\`
-
-**Notice component (success):**
-\`\`\`html
-<div style="background:var(--accent-light);border:1px solid var(--accent-border);border-radius:14px;padding:16px 18px;margin-bottom:16px;">
-  <div style="font-size:13px;font-weight:600;color:#111827;margin-bottom:4px;">✓ {title}</div>
-  <div style="font-size:13px;color:#374151;line-height:1.5;">{body}</div>
-</div>
-\`\`\`
-
-**Summary-card component:**
-\`\`\`html
-<div style="background:white;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;margin-bottom:20px;">
-  <div style="padding:14px 16px;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;">
-    <span style="font-size:13px;color:#6b7280;">{label}</span>
-    <span style="font-size:13px;font-weight:600;color:#111827;">{value}</span>
-  </div>
-</div>
-\`\`\`
-
-**Primary action button:**
-\`\`\`html
-<button id="btn-{screenId}-primary" onclick="handleAction('{actionId}', '{screenId}')"
-  style="width:100%;padding:16px;background:var(--accent);color:white;border:none;border-radius:14px;font-size:16px;font-weight:700;cursor:pointer;transition:all 0.15s;letter-spacing:-0.01em;"
-  onmouseover="if(!this.disabled)this.style.background='var(--accent-dark)'"
-  onmouseout="this.style.background='var(--accent)'"
-  onmousedown="this.style.transform='scale(0.97)'"
-  onmouseup="this.style.transform='scale(1)'">
-  {label}
-</button>
-\`\`\`
-Disabled style: \`background:#e5e7eb;color:#9ca3af;cursor:not-allowed;\`
-
-**Back button** (top-left of screen):
-\`\`\`html
-<button onclick="goBack()" style="display:flex;align-items:center;gap:6px;font-size:14px;color:#6b7280;background:none;border:none;cursor:pointer;padding:16px 20px 0;font-weight:500;">
-  ← Back
-</button>
-\`\`\`
-
----
-
-SCREEN-BY-SCREEN REQUIREMENTS:
-- EVERY ui screen MUST have real interactive content — never just a title and button with nothing in between
-- For selection screens: use choice-cards or chip-group (never plain radio buttons)
-- For form screens: use the styled input component
-- For result/dashboard screens: use stats-grid prominently
-- For welcome/hero screens: use a large, bold hero with a brief description + visually interesting layout
-- For AI result screens: use the notice component with the response content
-
-QUALITY CHECKLIST before outputting:
-□ Does every screen have substantive content between the title and the button?
-□ Are all choice selections using the beautiful card design (not plain radio/checkbox)?
-□ Does the primary button have the accent color and hover/press states?
-□ Is the background gradient applied to the body?
-□ Do stats use the accent-light card design?
-□ Are all screen transitions smooth (opacity + translateY)?
-
-Start screen ID: ${appMap.moments[0]?.id ?? ''}
-
-Return ONLY the complete HTML file. No explanation, no markdown fences. Start with <!DOCTYPE html>.`;
+  return code;
 }
 
 export async function POST(req: NextRequest) {
@@ -278,50 +114,61 @@ export async function POST(req: NextRequest) {
     const { appMap } = (await req.json()) as { appMap: AppMap };
 
     if (!appMap?.moments?.length) {
-      return NextResponse.json({ error: 'Invalid appMap' }, { status: 400 });
+      return new Response(JSON.stringify({ error: 'Invalid appMap' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
-    const prompt = buildPrompt(appMap);
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const moments = appMap.moments.filter((m) => !m.parentMomentId);
 
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 16000,
-      messages: [{ role: 'user', content: prompt }],
+        const promises = moments.map(async (moment) => {
+          try {
+            let code = await generateScreenComponent(moment, appMap);
+
+            if (FORBIDDEN_PATTERNS.test(code)) {
+              console.log(`[build-app] Retrying ${moment.id} — forbidden pattern detected`);
+              code = await generateScreenComponent(moment, appMap);
+            }
+
+            const event = `data: ${JSON.stringify({
+              momentId: moment.id,
+              componentCode: code,
+              status: 'done',
+            })}\n\n`;
+            controller.enqueue(encoder.encode(event));
+          } catch (err) {
+            console.error(`[build-app] Error generating ${moment.id}:`, err);
+            const event = `data: ${JSON.stringify({
+              momentId: moment.id,
+              componentCode: null,
+              status: 'error',
+              error: err instanceof Error ? err.message : 'Generation failed',
+            })}\n\n`;
+            controller.enqueue(encoder.encode(event));
+          }
+        });
+
+        await Promise.all(promises);
+        controller.close();
+      },
     });
 
-    const html = (message.content[0] as { type: string; text: string }).text.trim();
-
-    // Strip markdown fences if Claude added them anyway
-    const cleaned = html
-      .replace(/^```html\n?/i, '')
-      .replace(/^```\n?/, '')
-      .replace(/\n?```$/, '')
-      .trim();
-
-    if (!cleaned.includes('<!DOCTYPE') && !cleaned.includes('<html')) {
-      return NextResponse.json({ error: 'Claude did not return valid HTML' }, { status: 500 });
-    }
-
-    // Upload to Vercel Blob (optional — only if token is present)
-    let url: string | null = null;
-    if (process.env.BLOB_READ_WRITE_TOKEN) {
-      const slug = `${appMap.appName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
-      const blob = await put(`apps/${slug}.html`, cleaned, {
-        access: 'public',
-        contentType: 'text/html',
-      });
-      url = blob.url;
-      console.log(`[build-app] Built and uploaded: ${blob.url}`);
-    } else {
-      console.log('[build-app] No BLOB_READ_WRITE_TOKEN — skipping upload');
-    }
-
-    return NextResponse.json({ url, html: cleaned });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    });
   } catch (err) {
     console.error('[build-app] Error:', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Unknown error' },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 }

@@ -51,7 +51,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
     setPromptTemplateSaved(false);
   }, [moment.id]);
 
-  const { appMap, selectMoment, updateMoment, updateAppRuntime, setMomentMock, addMoments, removeEdges, flagMoments, clearAllFlags, clearFlag, batchUpdateMoments, flaggedMoments, isEditing, setEditing } =
+  const { appMap, selectMoment, updateMoment, updateAppRuntime, setMomentMock, setMomentComponentCode, addMoments, removeEdges, flagMoments, clearAllFlags, clearFlag, batchUpdateMoments, flaggedMoments, isEditing, setEditing } =
     useMomentaiStore();
 
   const flagReason = flaggedMoments[moment.id];
@@ -92,58 +92,11 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ moment, change: changeText, journey, appMap }),
       });
-      const updated = await res.json();
-      updateMoment(moment.id, {
-        label: updated.label,
-        type: updated.type,
-        description: updated.description,
-        preview: updated.preview,
-        mockHtml: updated.mockHtml ?? moment.mockHtml,
-        screenSpec: updated.screenSpec ?? moment.screenSpec,
-      });
-      if (updated.stateSchema || updated.initialState || updated.runtimeVersion || updated.appPlatform) {
-        updateAppRuntime({
-          stateSchema: updated.stateSchema ?? appMap.stateSchema,
-          initialState: updated.initialState ?? appMap.initialState,
-          runtimeVersion: updated.runtimeVersion ?? appMap.runtimeVersion,
-          appPlatform: updated.appPlatform ?? appMap.appPlatform,
-        });
-      }
-      if (updated.removedEdgeIds?.length) removeEdges(updated.removedEdgeIds);
-      if (updated.newMoments?.length) {
-        addMoments(updated.newMoments, updated.newEdges ?? []);
-        // If new edges rewire branches (new moment → existing branch node), update branchOf
-        const newIds = new Set((updated.newMoments as { id: string }[]).map((m) => m.id));
-        for (const edge of (updated.newEdges ?? []) as { source: string; target: string }[]) {
-          if (!newIds.has(edge.source)) continue;
-          const target = appMap.moments.find((m) => m.id === edge.target);
-          if (target?.branchOf) updateMoment(target.id, { branchOf: edge.source });
-        }
+      const result = await res.json();
+      if (result.componentCode) {
+        setMomentComponentCode(moment.id, result.componentCode);
       }
       setMockVersion((v) => v + 1);
-
-      // Auto-cascade to all affected downstream moments
-      const affectedMoments: Record<string, string> = updated.affectedMoments ?? {};
-      const affectedItems = Object.entries(affectedMoments)
-        .map(([id, reason]) => ({ moment: appMap.moments.find((m) => m.id === id)!, reason: reason as string }))
-        .filter((item) => item.moment);
-
-      if (affectedItems.length > 0) {
-        flagMoments(affectedMoments);
-        setCascadeCount(affectedItems.length);
-        setIsCascading(true);
-        fetch('/api/propagate-batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: affectedItems, editChange: changeText, editedMoment: { ...moment, ...updated }, journey, appMap }),
-        })
-          .then((r) => r.json())
-          .then((result) => {
-            if (result.updates) batchUpdateMoments(result.updates);
-          })
-          .catch(console.error)
-          .finally(() => setIsCascading(false));
-      }
     } catch (err) {
       console.error(err);
     } finally {

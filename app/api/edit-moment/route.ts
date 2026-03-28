@@ -1,185 +1,107 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { AppMap, Journey, Moment } from '@/lib/types';
-import { buildFallbackScreenSpec } from '@/lib/runtime';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client = new Anthropic();
+
+const COMPONENT_SYSTEM_PROMPT = `You are generating a single screen component for a mobile/web app.
+Stack: React + Tailwind CSS + shadcn-style UI components available on window.UI.
+
+STRICT RULES — violation of any of these is a failure:
+- NEVER use placeholder text. Invent realistic, specific content.
+- NEVER write "Lorem ipsum", "Coming soon", "TBD", "User Name", "Item Title", "Description here", or any placeholder equivalent.
+- Every button must trigger a visible action — navigation, state change, or UI feedback.
+- Every form must have real field labels, real placeholder examples, and real validation states.
+- Use window.UI components throughout. Available: Button, Card, CardHeader, CardContent, CardTitle, CardDescription, CardFooter, Input, Badge, Avatar, AvatarFallback, Separator, Tabs, TabsList, TabsTrigger, TabsContent, Sheet, SheetContent, SheetHeader, SheetTitle, Dialog, DialogContent, DialogHeader, DialogTitle, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Label, Switch, Textarea.
+- Access them via: const { Button, Card, Input, Badge, ... } = window.UI;
+- Mobile-first layout using Tailwind flex, gap, and padding. No fixed pixel widths.
+- Invent realistic data: real names, real prices, real dates, real copy. The screen must look like a shipped product, not a wireframe.
+- The component must be self-contained. No imports. React is globally available (React, useState, useEffect, etc. are on window).
+- Do NOT use import statements at all.
+- Do NOT use export statements. Assign the component to window.__SCREEN_COMPONENT__ instead.
+
+COMPONENT INTERFACE:
+The component receives these props:
+- state: object — the current app state
+- onNavigate: (momentId: string) => void — call this to move to another screen
+- onStateChange: (key: string, value: any) => void — call this to update app state
+
+Write the component as:
+window.__SCREEN_COMPONENT__ = function ScreenComponent({ state, onNavigate, onStateChange }) {
+  // component body using React hooks, window.UI components, Tailwind classes
+};
+
+Return ONLY the JavaScript code. No explanation. No markdown fences. No imports. No exports.`;
 
 export async function POST(req: NextRequest) {
-  const {
-    moment,
-    change,
-    journey,
-    appMap,
-  }: { moment: Moment; change: string; journey: Journey; appMap: AppMap } = await req.json();
+  try {
+    const {
+      moment,
+      change,
+      journey,
+      appMap,
+    }: { moment: Moment; change: string; journey: Journey; appMap: AppMap } = await req.json();
 
-  const allMomentsContext = appMap.moments
-    .filter((entry) => entry.id !== moment.id)
-    .map((entry) => `  { "id": "${entry.id}", "label": "${entry.label}", "type": "${entry.type}", "description": "${entry.description.slice(0, 120).replace(/"/g, "'")}" }`)
-    .join('\n');
+    const connectedEdges = appMap.edges.filter(
+      (e) => e.source === moment.id || e.target === moment.id
+    );
+    const connectedMoments = connectedEdges.map((e) => {
+      const targetId = e.source === moment.id ? e.target : e.source;
+      const target = appMap.moments.find((m) => m.id === targetId);
+      return `  - ${e.source === moment.id ? '→' : '←'} "${target?.label ?? targetId}" (id: ${targetId})${e.label ? ` [${e.label}]` : ''}`;
+    }).join('\n');
 
-  const connectedEdges = appMap.edges.filter(
-    (edge) => edge.source === moment.id || edge.target === moment.id
-  );
+    const stateSchema = (appMap.stateSchema ?? []).map((f) =>
+      `  ${f.key}: ${f.type}${f.defaultValue !== undefined ? ` (default: ${JSON.stringify(f.defaultValue)})` : ''}`
+    ).join('\n');
 
-  const edgeContext = connectedEdges
-    .map((edge) => {
-      const sourceLabel = appMap.moments.find((entry) => entry.id === edge.source)?.label ?? edge.source;
-      const targetLabel = appMap.moments.find((entry) => entry.id === edge.target)?.label ?? edge.target;
-      return `  { "id": "${edge.id}", "source": "${edge.source}" (${sourceLabel}), "target": "${edge.target}" (${targetLabel})${edge.label ? `, "label": "${edge.label}"` : ''} }`;
-    })
-    .join('\n');
+    const existingCode = moment.componentCode
+      ? `\nEXISTING COMPONENT CODE (modify this based on the change request):\n${moment.componentCode}`
+      : '';
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: `You are editing a specific moment inside a mobile prototype builder. Return ONLY valid JSON.
+    const userPrompt = `APP: ${appMap.appName}
+DESCRIPTION: ${appMap.appDescription}
+PLATFORM: ${appMap.appPlatform ?? 'mobile'}
+JOURNEY: ${journey.name} — ${journey.description}
 
-App: ${appMap.appName}
-Description: ${appMap.appDescription}
-Journey: ${journey.name} — ${journey.description}
-
-Current app runtime schema:
-${JSON.stringify(appMap.stateSchema ?? [], null, 2)}
-
-Current moment:
-- ID: ${moment.id}
+SCREEN TO EDIT:
 - Label: ${moment.label}
-- Type: ${moment.type}
 - Description: ${moment.description}
-- Preview: ${moment.preview}
-- Existing screenSpec: ${JSON.stringify(moment.screenSpec ?? null)}
+- Type: ${moment.type}
+- Screen title: ${moment.screenSpec?.title ?? moment.label}
 
-Connected edges:
-${edgeContext || '  (none)'}
+Connected screens:
+${connectedMoments || '  (none)'}
 
-Other moments in the app:
-${allMomentsContext || '  (none)'}
+State schema:
+${stateSchema || '  (none)'}
+${existingCode}
 
-User change request:
+USER'S CHANGE REQUEST:
 "${change}"
 
-Return ONLY this JSON shape:
-{
-  "label": "updated label",
-  "type": "ui|ai|data|auth",
-  "description": "updated description",
-  "preview": "updated preview",
-  "screenSpec": {
-    "eyebrow": "Short label",
-    "title": "Screen title",
-    "subtitle": "Supporting copy",
-    "progress": { "current": 1, "total": 4 },
-    "components": [],
-    "actions": []
-  },
-  "stateSchema": [],
-  "initialState": {},
-  "newMoments": [],
-  "newEdges": [],
-  "removedEdgeIds": [],
-  "affectedMomentIds": [{"id": "moment-id", "reason": "why this downstream moment is affected"}]
-}
+Apply ONLY this change. Keep everything else about the screen intact. Generate the complete updated component code.`;
 
-Rules:
-- This is mobile-only v1
-- Do NOT return HTML
-- The moment must remain runnable in a constrained runtime schema
-- Supported component types: "hero", "input", "choice-cards", "chip-group", "notice", "summary-card", "stats-grid", "list", "spacer"
-- Supported action kinds: "navigate", "branch", "back"
-- If the edit adds a new input or new stateful choice, add or update the app-level stateSchema
-- If the edit adds a new screen, include it in newMoments with its own full screenSpec
-- If the edit inserts a screen into the flow, use removedEdgeIds and newEdges to rewire the graph correctly
-- Each action should use requiredKeys if it depends on user input
-- Return full stateSchema and full initialState after the edit, not partial diffs
-- Keep IDs lowercase and hyphenated
-- Only flag downstream moments that genuinely need updates`,
-      },
-    ],
-  });
-
-  const text = (message.content[0] as { type: string; text: string }).text;
-  const stripped = text.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
-
-  try {
-    const parsed = JSON.parse(stripped);
-
-    const outgoingEdges = appMap.edges.filter((edge) => edge.source === moment.id);
-    const downstreamMoments = outgoingEdges
-      .map((edge) => appMap.moments.find((entry) => entry.id === edge.target))
-      .filter(Boolean) as Moment[];
-
-    const updatedMoment: Moment = {
-      ...moment,
-      label: parsed.label ?? moment.label,
-      type: parsed.type ?? moment.type,
-      description: parsed.description ?? moment.description,
-      preview: parsed.preview ?? moment.preview,
-      screenSpec: parsed.screenSpec ?? buildFallbackScreenSpec(
-        {
-          ...moment,
-          label: parsed.label ?? moment.label,
-          type: parsed.type ?? moment.type,
-          description: parsed.description ?? moment.description,
-          preview: parsed.preview ?? moment.preview,
-        },
-        appMap
-      ),
-    };
-
-    const newMoments = (parsed.newMoments ?? []).map((entry: Record<string, unknown>, index: number) => {
-      let x = moment.position.x + 320 * (index + 1);
-      let y = moment.position.y;
-
-      if (downstreamMoments.length > 0) {
-        const avgDownstreamX =
-          downstreamMoments.reduce((sum, downstream) => sum + downstream.position.x, 0) /
-          downstreamMoments.length;
-        const avgDownstreamY =
-          downstreamMoments.reduce((sum, downstream) => sum + downstream.position.y, 0) /
-          downstreamMoments.length;
-        x = Math.round((moment.position.x + avgDownstreamX) / 2) + index * 300;
-        y = Math.round((moment.position.y + avgDownstreamY) / 2);
-      }
-
-      const candidateMoment: Moment = {
-        id: String(entry.id),
-        journeyId: String(entry.journeyId ?? moment.journeyId),
-        label: String(entry.label ?? 'New Screen'),
-        type: (entry.type as Moment['type']) ?? 'ui',
-        description: String(entry.description ?? 'New moment'),
-        preview: String(entry.preview ?? 'Generated screen'),
-        position: { x, y },
-        screenSpec: entry.screenSpec as Moment['screenSpec'],
-      };
-
-      return {
-        ...candidateMoment,
-        screenSpec: candidateMoment.screenSpec ?? buildFallbackScreenSpec(candidateMoment, appMap),
-      };
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system: COMPONENT_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const affectedMoments: Record<string, string> = {};
-    for (const item of parsed.affectedMomentIds ?? []) {
-      if (item?.id && item?.reason) affectedMoments[item.id] = item.reason;
-    }
+    let code = (message.content[0] as { type: string; text: string }).text.trim();
 
-    return NextResponse.json({
-      ...updatedMoment,
-      stateSchema: parsed.stateSchema ?? appMap.stateSchema ?? [],
-      initialState: parsed.initialState ?? appMap.initialState ?? {},
-      runtimeVersion: 1,
-      appPlatform: 'mobile',
-      mockHtml: null,
-      newMoments,
-      newEdges: parsed.newEdges ?? [],
-      removedEdgeIds: parsed.removedEdgeIds ?? [],
-      affectedMoments,
-    });
-  } catch {
-    return NextResponse.json({ error: 'Failed to parse update' }, { status: 500 });
+    code = code
+      .replace(/^```(?:javascript|jsx|js|tsx)?\n?/i, '')
+      .replace(/\n?```$/, '')
+      .trim();
+
+    return NextResponse.json({ componentCode: code });
+  } catch (err) {
+    console.error('[edit-moment] Error:', err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Failed to generate edit' },
+      { status: 500 }
+    );
   }
 }

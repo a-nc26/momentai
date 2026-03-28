@@ -137,11 +137,13 @@ export interface Moment {
   preview: string;
   position: { x: number; y: number };
   mockHtml?: string;
-  branchOf?: string; // parent node id — this node is hidden until parent is clicked
-  parentMomentId?: string; // compound parent moment id — hidden from top-level map until user drills in
-  promptTemplate?: string; // displayed in AI implementation panel (type === 'ai' only)
-  responseKey?: string;    // state key where AI response is written (defaults to `${id}_response`)
+  branchOf?: string;
+  parentMomentId?: string;
+  promptTemplate?: string;
+  responseKey?: string;
   screenSpec?: RuntimeScreenSpec;
+  componentCode?: string;
+  buildStatus?: 'idle' | 'building' | 'done' | 'error';
 }
 
 export interface Journey {
