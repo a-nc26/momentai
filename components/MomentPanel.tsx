@@ -5,10 +5,12 @@ import { useMomentaiStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Moment } from '@/lib/types';
 import { JOURNEY_COLORS } from '@/lib/colors';
 import { buildSrcdoc } from '@/lib/buildSrcdoc';
+import MockFrame from './MockFrame';
+import StreamingMockFrame from './StreamingMockFrame';
+import MobileRuntime from './runtime/MobileRuntime';
 
 const TYPE_LABELS: Record<string, string> = {
   ui: 'UI Screen', ai: 'AI-Powered', data: 'Data Layer', auth: 'Auth Step',
@@ -75,7 +77,7 @@ function ComponentPreview({
 export default function MomentPanel({ moment }: { moment: Moment }) {
   const [editText, setEditText] = useState('');
   const [mockVersion, setMockVersion] = useState(0);
-  const [previewWidth, setPreviewWidth] = useState(150);
+  const [previewWidth, setPreviewWidth] = useState(200);
 
   const [promptTemplateText, setPromptTemplateText] = useState(moment.promptTemplate ?? '');
   const [promptTemplateSaved, setPromptTemplateSaved] = useState(false);
@@ -86,7 +88,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
     setPromptTemplateSaved(false);
   }, [moment.id]);
 
-  const { appMap, selectMoment, updateMoment, setMomentComponentCode, flaggedMoments, isEditing, setEditing, clearFlag } =
+  const { appMap, selectMoment, updateMoment, setMomentComponentCode, setMomentMock, flaggedMoments, isEditing, setEditing, clearFlag } =
     useMomentaiStore();
 
   const flagReason = flaggedMoments[moment.id];
@@ -98,7 +100,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
     const update = () => {
       if (appMap?.appPlatform === 'web') { setPreviewWidth(420); return; }
       const h = window.innerHeight;
-      setPreviewWidth(h <= 800 ? 150 : h <= 960 ? 180 : 200);
+      setPreviewWidth(h <= 800 ? 200 : h <= 960 ? 230 : 260);
     };
     update();
     window.addEventListener('resize', update);
@@ -165,10 +167,18 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
     }
   }, [isRegenerating, isEditing, appMap, moment, setMomentComponentCode]);
 
+  const previewOverlay = (isEditing || isRegenerating) ? (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[20px]"
+      style={{ background: 'rgba(9,9,11,0.72)', backdropFilter: 'blur(4px)' }}>
+      <div className="w-5 h-5 rounded-full border-2 border-zinc-600 border-t-indigo-400 animate-spin" />
+      <p className="text-zinc-300 text-[10px] font-medium">{isRegenerating ? 'Regenerating...' : 'Applying edit...'}</p>
+    </div>
+  ) : null;
+
   return (
     <div className="w-[480px] h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex flex-col overflow-hidden shrink-0">
-      {/* ── Header ── */}
-      <div className="px-4 pt-3 pb-2 shrink-0">
+      {/* ── Header (fixed) ── */}
+      <div className="px-4 pt-3 pb-2 shrink-0 border-b border-zinc-800">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
@@ -198,7 +208,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
 
       {/* ── Downstream flag ── */}
       {flagReason && (
-        <div className="mx-4 mb-1 shrink-0 flex items-start gap-2 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-1.5">
+        <div className="mx-4 my-1 shrink-0 flex items-start gap-2 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1" />
           <p className="text-amber-300/70 text-[10px] leading-relaxed flex-1">{flagReason}</p>
           <button onClick={() => clearFlag(moment.id)} className="text-amber-500/50 hover:text-amber-400 shrink-0">
@@ -209,31 +219,50 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
         </div>
       )}
 
-      {/* ── Compact preview ── */}
-      {moment.componentCode && (
-        <div className="shrink-0 px-4 py-3 border-y border-zinc-900 bg-zinc-950/80">
+      {/* ── Scrollable middle: PREVIEW + description + AI prompt ── */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Screen preview — always present with fallbacks */}
+        <div className="px-4 py-3">
+          <p className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider mb-2">Screen Preview</p>
           <div className="relative flex justify-center">
-            <ComponentPreview
-              key={`${moment.id}-${mockVersion}`}
-              componentCode={moment.componentCode}
-              state={(appMap?.initialState as Record<string, unknown>) ?? {}}
-              previewWidth={previewWidth}
-              platform={appMap?.appPlatform ?? 'mobile'}
-            />
-            {(isEditing || isRegenerating) && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[20px]"
-                style={{ background: 'rgba(9,9,11,0.72)', backdropFilter: 'blur(4px)' }}>
-                <div className="w-5 h-5 rounded-full border-2 border-zinc-600 border-t-indigo-400 animate-spin" />
-                <p className="text-zinc-300 text-[10px] font-medium">{isRegenerating ? 'Regenerating...' : 'Applying edit...'}</p>
+            {moment.componentCode ? (
+              <ComponentPreview
+                key={`${moment.id}-${mockVersion}`}
+                componentCode={moment.componentCode}
+                state={(appMap?.initialState as Record<string, unknown>) ?? {}}
+                previewWidth={previewWidth}
+                platform={appMap?.appPlatform ?? 'mobile'}
+              />
+            ) : moment.screenSpec && appMap ? (
+              <MobileRuntime
+                appMap={appMap}
+                startMomentId={moment.id}
+                phoneWidth={previewWidth}
+                onMomentChange={(id) => { if (id) selectMoment(id); }}
+              />
+            ) : moment.mockHtml ? (
+              <MockFrame key={`${moment.id}-${mockVersion}`} html={moment.mockHtml} width={previewWidth} mode={appMap?.appPlatform ?? 'mobile'} />
+            ) : journey ? (
+              <StreamingMockFrame
+                key={moment.id}
+                fetchKey={`${moment.id}:${moment.preview ?? ''}`}
+                url="/api/generate-mock"
+                body={{ moment, journey, appMap }}
+                width={previewWidth}
+                mode={appMap?.appPlatform ?? 'mobile'}
+                onComplete={(html) => setMomentMock(moment.id, html)}
+              />
+            ) : (
+              <div className="w-full h-40 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800">
+                <p className="text-zinc-600 text-xs">No preview available</p>
               </div>
             )}
+            {previewOverlay}
           </div>
         </div>
-      )}
 
-      {/* ── Scrollable middle: description + AI prompt ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="px-4 py-3">
+        {/* Description */}
+        <div className="px-4 pb-3">
           <p className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider mb-1">Description</p>
           <p className="text-zinc-400 text-xs leading-relaxed">{moment.description}</p>
         </div>
@@ -268,7 +297,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
       </div>
 
       {/* ── Edit bar — ALWAYS visible at the bottom ── */}
-      <div className="shrink-0 border-t border-zinc-800 bg-zinc-900/95 backdrop-blur-sm p-4 space-y-2">
+      <div className="shrink-0 border-t border-zinc-800 bg-zinc-900/95 backdrop-blur-sm p-3 space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-zinc-400 text-[10px] font-medium uppercase tracking-wider">Edit this Screen</p>
           <button
@@ -286,7 +315,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
         <div className="flex gap-2">
           <Textarea
             className="flex-1 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-600 resize-none text-xs min-h-[36px] max-h-[80px] focus-visible:ring-indigo-500/40 focus-visible:border-indigo-500/50"
-            placeholder="e.g. Make the button say 'Woof I'm here', add a search bar..."
+            placeholder="Describe the change you want..."
             value={editText}
             onChange={(e) => setEditText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleApplyEdit(); }}
