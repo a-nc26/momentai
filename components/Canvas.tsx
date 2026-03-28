@@ -13,6 +13,7 @@ import {
   useReactFlow,
   Node,
   Edge,
+  Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useMomentaiStore } from '@/lib/store';
@@ -28,6 +29,9 @@ const nodeTypes = {
 
 const JOURNEY_PADDING = 40;
 const JOURNEY_HEADER_HEIGHT = 48;
+
+// Zoom threshold below which we collapse into bird's eye (journey-only) mode
+const BIRDS_EYE_ZOOM = 0.38;
 
 function buildJourneyBounds(appMap: AppMap) {
   const bounds: Record<string, { minX: number; minY: number; maxX: number; maxY: number; count: number }> = {};
@@ -57,7 +61,6 @@ function buildNodes(
   const bounds = buildJourneyBounds(appMap);
   const nodes: Node[] = [];
 
-  // Journey group nodes
   for (let i = 0; i < appMap.journeys.length; i++) {
     const journey = appMap.journeys[i];
     const color = JOURNEY_COLORS[i % JOURNEY_COLORS.length];
@@ -88,7 +91,6 @@ function buildNodes(
 
   if (birdsEye) return nodes;
 
-  // Moment nodes
   for (const moment of appMap.moments) {
     if (moment.parentMomentId) continue;
     const journeyIndex = appMap.journeys.findIndex((j) => j.id === moment.journeyId);
@@ -176,7 +178,7 @@ function CanvasContent() {
   } = useMomentaiStore();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const { fitView: _fitView } = useReactFlow();
+  const { fitView, setViewport, getZoom } = useReactFlow();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [birdsEye, setBirdsEye] = useState(false);
 
@@ -199,7 +201,11 @@ function CanvasContent() {
     );
   }, [selectedMomentId]);
 
-  // Derive visible nodes/edges — branch nodes hidden unless parent is expanded
+  // Auto switch bird's eye based on zoom level
+  const onMoveEnd = useCallback((_: unknown, viewport: Viewport) => {
+    setBirdsEye(viewport.zoom < BIRDS_EYE_ZOOM);
+  }, []);
+
   const visibleNodes = useMemo(() => {
     return nodes.map((n) => {
       const branchOf = (n.data as { moment?: { branchOf?: string } })?.moment?.branchOf;
@@ -217,6 +223,7 @@ function CanvasContent() {
     [edges, hiddenNodeIds]
   );
 
+  // Single-click: select moment to open edit panel
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       if (node.type === 'journeyGroup') return;
@@ -232,10 +239,62 @@ function CanvasContent() {
     [selectMoment, setActiveMomentId, appMap]
   );
 
+  // Double-click a journey group → zoom into that journey (exit bird's eye)
+  // Double-click a moment node → zoom in to focus on that node + its neighbors
+  const onNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (node.type === 'journeyGroup') {
+        // Zoom into this journey: find all moment nodes inside it and fit to them
+        const journeyId = (node.id as string).replace('journey-', '');
+        const momentNodesInJourney = nodes.filter(
+          (n) => n.type === 'momentNode' &&
+            (n.data as { moment?: { journeyId?: string } })?.moment?.journeyId === journeyId
+        );
+
+        if (momentNodesInJourney.length > 0) {
+          setBirdsEye(false);
+          setTimeout(() => {
+            fitView({
+              nodes: momentNodesInJourney,
+              padding: 0.25,
+              duration: 500,
+            });
+          }, 50);
+        }
+        return;
+      }
+
+      // Zoom into moment + its connected neighbors
+      if (!appMap) return;
+      const connectedIds = new Set<string>([node.id]);
+      for (const edge of appMap.edges) {
+        if (edge.source === node.id) connectedIds.add(edge.target);
+        if (edge.target === node.id) connectedIds.add(edge.source);
+      }
+
+      const neighborNodes = nodes.filter((n) => connectedIds.has(n.id));
+      fitView({
+        nodes: neighborNodes.length > 0 ? neighborNodes : [node],
+        padding: 0.3,
+        duration: 500,
+        minZoom: 0.9,
+        maxZoom: 1.4,
+      });
+    },
+    [nodes, appMap, fitView]
+  );
+
   const onPaneClick = useCallback(() => {
     selectMoment(null);
     setExpandedId(null);
   }, [selectMoment]);
+
+  // Zoom out button: zoom to fit all and let onMoveEnd handle bird's eye
+  const zoomToAll = useCallback(() => {
+    fitView({ padding: 0.15, duration: 500 });
+  }, [fitView]);
+
+  const currentZoom = getZoom();
 
   return (
     <div className="w-full h-full">
@@ -246,7 +305,9 @@ function CanvasContent() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
         onPaneClick={onPaneClick}
+        onMoveEnd={onMoveEnd}
         fitView
         fitViewOptions={{ padding: 0.15 }}
         minZoom={0.15}
@@ -261,15 +322,17 @@ function CanvasContent() {
           maskColor="rgba(9,9,11,0.7)"
         />
 
-        {/* Bird's eye toggle */}
-        <div className="absolute top-4 right-4 z-10">
+        {/* Zoom indicator + overview button */}
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+          {birdsEye && (
+            <div className="text-[10px] text-zinc-500 bg-zinc-900/80 border border-zinc-800 px-2.5 py-1 rounded-md">
+              Overview — zoom in or double-click a journey to see screens
+            </div>
+          )}
           <button
-            onClick={() => setBirdsEye((v) => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-              birdsEye
-                ? 'bg-indigo-600 border-indigo-500 text-white'
-                : 'bg-zinc-900/90 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500'
-            }`}
+            onClick={zoomToAll}
+            title="Fit all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900/90 border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-all"
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
               <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
@@ -277,14 +340,16 @@ function CanvasContent() {
               <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
               <rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
             </svg>
-            {birdsEye ? "Show screens" : "Bird's eye"}
+            Fit all
           </button>
         </div>
 
         {/* Hint */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="text-xs text-zinc-600 bg-zinc-900/80 px-3 py-1.5 rounded-full border border-zinc-800">
-            Click to edit · Branch nodes expand on click
+            {birdsEye
+              ? 'Zoom in or double-click a journey to drill into its screens'
+              : 'Click to edit · Double-click to zoom in on a screen + its connections'}
           </div>
         </div>
       </ReactFlow>
