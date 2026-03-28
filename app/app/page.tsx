@@ -9,7 +9,6 @@ import Canvas from '@/components/Canvas';
 import MomentPanel from '@/components/MomentPanel';
 import ReactRuntime from '@/components/runtime/ReactRuntime';
 import { DEMO_MAP } from '@/lib/demo';
-import { FIXTURE_MAP } from '@/lib/fixture';
 import { createProject, updateProject } from '@/lib/projects';
 
 function DemoLoader() {
@@ -90,7 +89,6 @@ export default function AppPage() {
     appMap,
     selectedMomentId,
     reset,
-    setAppMap,
     hasHydrated,
     builtAppUrl,
     setBuiltAppUrl,
@@ -100,22 +98,6 @@ export default function AppPage() {
     setMomentBuildStatus,
   } = useMomentaiStore();
 
-  // withScreens=true → pre-built componentCode for instant UI testing
-  // withScreens=false → clears componentCode so Build & Share tests fresh generation
-  const loadFixture = useCallback((withScreens = true) => {
-    reset();
-    const map = withScreens
-      ? FIXTURE_MAP
-      : {
-          ...FIXTURE_MAP,
-          moments: FIXTURE_MAP.moments.map((m) => ({
-            ...m,
-            componentCode: undefined,
-            buildStatus: 'idle' as const,
-          })),
-        };
-    setAppMap(map);
-  }, [reset, setAppMap]);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [buildProgress, setBuildProgress] = useState({ done: 0, total: 0 });
@@ -237,27 +219,6 @@ export default function AppPage() {
           <div className="w-2 h-2 rounded-full bg-indigo-500" />
           <span className="text-white font-semibold text-sm tracking-tight">Momentum</span>
         </div>
-        {!validAppMap && (
-          <>
-            <div className="flex-1" />
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => loadFixture(true)}
-                title="Load pre-built ParkPals — instant, for testing canvas & UI"
-                className="text-amber-400 hover:text-amber-300 text-xs border border-amber-800/60 hover:border-amber-600 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1.5 rounded-l-lg border-r-0 transition-all"
-              >
-                ⚡ Quick Test
-              </button>
-              <button
-                onClick={() => loadFixture(false)}
-                title="Load ParkPals without screens — then click Build & Share to test generation"
-                className="text-amber-400/70 hover:text-amber-300 text-xs border border-amber-800/60 hover:border-amber-600 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1.5 rounded-r-lg transition-all"
-              >
-                ↺ fresh
-              </button>
-            </div>
-          </>
-        )}
         {validAppMap && (
           <>
             <span className="text-zinc-700">/</span>
@@ -308,22 +269,6 @@ export default function AppPage() {
             >
               My Projects
             </button>
-            <div className="flex items-center gap-0">
-              <button
-                onClick={() => loadFixture(true)}
-                title="Load pre-built ParkPals — instant UI testing"
-                className="text-amber-400 hover:text-amber-300 text-xs border border-amber-800/60 hover:border-amber-600 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1.5 rounded-l-lg border-r-0 transition-all"
-              >
-                ⚡ Quick Test
-              </button>
-              <button
-                onClick={() => loadFixture(false)}
-                title="Load ParkPals without screens — test generation quality"
-                className="text-amber-400/70 hover:text-amber-300 text-xs border border-amber-800/60 hover:border-amber-600 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1.5 rounded-r-lg transition-all"
-              >
-                ↺
-              </button>
-            </div>
             <button
               onClick={() => { reset(); router.push('/app'); }}
               className="text-zinc-500 hover:text-zinc-300 text-xs border border-zinc-800 hover:border-zinc-600 px-3 py-1.5 rounded-lg transition-all"
