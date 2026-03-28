@@ -140,6 +140,8 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
     return () => window.removeEventListener('resize', updatePreviewWidth);
   }, [appMap?.appPlatform]);
 
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
   const handleApplyEdit = async () => {
     if (!editText.trim() || isEditing || !appMap || !journey) return;
     setEditing(true);
@@ -160,6 +162,47 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
       console.error(err);
     } finally {
       setEditing(false);
+    }
+  };
+
+  // Rebuild just this one screen — useful for testing generation changes without rebuilding all screens
+  const handleRegenerate = async () => {
+    if (isRegenerating || isEditing || !appMap) return;
+    setIsRegenerating(true);
+    try {
+      const singleMomentMap = { ...appMap, moments: [moment] };
+      const res = await fetch('/api/build-app', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appMap: singleMomentMap }),
+      });
+      if (!res.ok || !res.body) return;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const payload = JSON.parse(line.slice(6));
+            if (payload.componentCode) {
+              setMomentComponentCode(moment.id, payload.componentCode);
+              setMockVersion((v) => v + 1);
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsRegenerating(false);
     }
   };
 
@@ -372,19 +415,36 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
 
       {/* Edit */}
       <div className="p-5 shrink-0 space-y-3">
-        <p className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider">Edit this Moment</p>
+        <div className="flex items-center justify-between">
+          <p className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider">Edit this Screen</p>
+          <button
+            onClick={handleRegenerate}
+            disabled={isRegenerating || isEditing}
+            title="Regenerate this screen from scratch using the current AI system prompt"
+            className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {isRegenerating ? (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full border border-zinc-500 border-t-zinc-300 animate-spin" />
+                Regenerating...
+              </>
+            ) : (
+              <>↺ Regenerate screen</>
+            )}
+          </button>
+        </div>
         <Textarea
           className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 resize-none text-sm min-h-[80px] focus-visible:ring-indigo-500/40 focus-visible:border-indigo-500/50"
           placeholder="e.g. Add a dark mode toggle, make the button red, add a search bar..."
           value={editText}
           onChange={(e) => setEditText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleApplyEdit(); }}
-          disabled={isEditing}
+          disabled={isEditing || isRegenerating}
         />
         <Button
           className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium h-10 transition-all disabled:opacity-50"
           onClick={handleApplyEdit}
-          disabled={!editText.trim() || isEditing}
+          disabled={!editText.trim() || isEditing || isRegenerating}
         >
           {isEditing ? (
             <span className="flex items-center gap-2">
