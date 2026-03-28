@@ -286,13 +286,13 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
           <p className="text-zinc-400 text-sm leading-relaxed">{moment.description}</p>
         </div>
 
-        {/* AI Implementation */}
+        {/* AI Implementation — always visible for ai-type moments */}
         {(moment.type === 'ai' || !!moment.promptTemplate) && (
           <div className="px-5 pb-5">
             <button onClick={() => setShowAiDetails((v) => !v)} className="w-full flex items-center justify-between group">
               <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-                <p className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider">AI Implementation</p>
+                <div className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+                <p className="text-zinc-300 text-[10px] font-semibold uppercase tracking-wider">AI Feature</p>
               </div>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
                 className={`text-zinc-600 group-hover:text-zinc-400 transition-all ${showAiDetails ? 'rotate-180' : ''}`}>

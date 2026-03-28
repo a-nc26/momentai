@@ -178,7 +178,7 @@ function CanvasContent() {
   } = useMomentaiStore();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const { fitView, setViewport, getZoom } = useReactFlow();
+  const { fitView } = useReactFlow();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [birdsEye, setBirdsEye] = useState(false);
 
@@ -239,49 +239,52 @@ function CanvasContent() {
     [selectMoment, setActiveMomentId, appMap]
   );
 
-  // Double-click a journey group → zoom into that journey (exit bird's eye)
-  // Double-click a moment node → zoom in to focus on that node + its neighbors
+  // Double-click a journey group → exit bird's eye and zoom into that journey's screens
+  // Double-click a moment node → zoom in to focus on that node + its connected neighbors
   const onNodeDoubleClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      if (node.type === 'journeyGroup') {
-        // Zoom into this journey: find all moment nodes inside it and fit to them
-        const journeyId = (node.id as string).replace('journey-', '');
-        const momentNodesInJourney = nodes.filter(
-          (n) => n.type === 'momentNode' &&
-            (n.data as { moment?: { journeyId?: string } })?.moment?.journeyId === journeyId
-        );
+      if (!appMap) return;
 
-        if (momentNodesInJourney.length > 0) {
-          setBirdsEye(false);
-          setTimeout(() => {
-            fitView({
-              nodes: momentNodesInJourney,
-              padding: 0.25,
-              duration: 500,
-            });
-          }, 50);
-        }
+      if (node.type === 'journeyGroup') {
+        const journeyId = (node.id as string).replace('journey-', '');
+        const momentsInJourney = appMap.moments.filter(
+          (m) => m.journeyId === journeyId && !m.parentMomentId
+        );
+        if (momentsInJourney.length === 0) return;
+
+        // Exit bird's eye first so nodes get added back to the graph,
+        // then fitView by ID — React Flow resolves IDs after the re-render
+        setBirdsEye(false);
+        setTimeout(() => {
+          fitView({
+            nodes: momentsInJourney.map((m) => ({ id: m.id })),
+            padding: 0.25,
+            duration: 500,
+          });
+        }, 80);
         return;
       }
 
-      // Zoom into moment + its connected neighbors
-      if (!appMap) return;
+      // Moment node: zoom in on this node + its immediate neighbors
       const connectedIds = new Set<string>([node.id]);
       for (const edge of appMap.edges) {
         if (edge.source === node.id) connectedIds.add(edge.target);
         if (edge.target === node.id) connectedIds.add(edge.source);
       }
 
-      const neighborNodes = nodes.filter((n) => connectedIds.has(n.id));
+      const focusMomentIds = appMap.moments
+        .filter((m) => connectedIds.has(m.id))
+        .map((m) => ({ id: m.id }));
+
       fitView({
-        nodes: neighborNodes.length > 0 ? neighborNodes : [node],
-        padding: 0.3,
+        nodes: focusMomentIds.length > 0 ? focusMomentIds : [{ id: node.id }],
+        padding: 0.35,
         duration: 500,
-        minZoom: 0.9,
-        maxZoom: 1.4,
+        minZoom: 0.8,
+        maxZoom: 1.5,
       });
     },
-    [nodes, appMap, fitView]
+    [appMap, fitView]
   );
 
   const onPaneClick = useCallback(() => {
@@ -289,12 +292,9 @@ function CanvasContent() {
     setExpandedId(null);
   }, [selectMoment]);
 
-  // Zoom out button: zoom to fit all and let onMoveEnd handle bird's eye
   const zoomToAll = useCallback(() => {
     fitView({ padding: 0.15, duration: 500 });
   }, [fitView]);
-
-  const currentZoom = getZoom();
 
   return (
     <div className="w-full h-full">
