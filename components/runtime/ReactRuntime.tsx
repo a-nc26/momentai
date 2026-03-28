@@ -1,9 +1,86 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { AppMap } from '@/lib/types';
 import { useMomentaiStore } from '@/lib/store';
 import { buildSrcdoc } from '@/lib/buildSrcdoc';
+
+function EditBar({
+  appMap,
+  currentMomentId,
+}: {
+  appMap: AppMap;
+  currentMomentId: string;
+}) {
+  const [editText, setEditText] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const { setMomentComponentCode } = useMomentaiStore();
+
+  const currentMoment = appMap.moments.find((m) => m.id === currentMomentId);
+  const journey = appMap.journeys.find((j) => j.id === currentMoment?.journeyId);
+
+  const handleSubmit = useCallback(async () => {
+    if (!editText.trim() || isEditing || !currentMoment || !journey) return;
+    setIsEditing(true);
+    const change = editText;
+    setEditText('');
+    try {
+      const res = await fetch('/api/edit-moment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moment: currentMoment, change, journey, appMap }),
+      });
+      const result = await res.json();
+      if (result.componentCode) {
+        setMomentComponentCode(currentMomentId, result.componentCode);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsEditing(false);
+    }
+  }, [editText, isEditing, currentMoment, journey, appMap, currentMomentId, setMomentComponentCode]);
+
+  if (!currentMoment?.componentCode) return null;
+
+  return (
+    <div className="shrink-0 border-t border-zinc-800 bg-zinc-900/95 backdrop-blur-sm px-4 py-3">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+        <span className="text-zinc-400 text-[11px] font-medium truncate">
+          {currentMoment.label}
+        </span>
+        {journey && (
+          <span className="text-zinc-600 text-[10px]">in {journey.name}</span>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={editText}
+          onChange={(e) => setEditText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+          placeholder="Describe a change to this screen..."
+          disabled={isEditing}
+          className="flex-1 bg-zinc-800 border border-zinc-700 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 text-white text-sm rounded-lg px-3 py-2 outline-none placeholder:text-zinc-600 disabled:opacity-50 transition-all"
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={!editText.trim() || isEditing}
+          className="shrink-0 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-1.5"
+        >
+          {isEditing ? (
+            <>
+              <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              Editing...
+            </>
+          ) : (
+            'Apply'
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function ReactRuntime({
   appMap,
@@ -30,7 +107,6 @@ export default function ReactRuntime({
     [appMap.moments, currentMomentId]
   );
 
-  // Sync from Zustand activeMomentId → local currentMomentId
   useEffect(() => {
     if (activeMomentId && activeMomentId !== currentMomentId) {
       const exists = appMap.moments.some((m) => m.id === activeMomentId);
@@ -41,7 +117,6 @@ export default function ReactRuntime({
     }
   }, [activeMomentId, appMap.moments]);
 
-  // Sync from local currentMomentId → Zustand activeMomentId
   useEffect(() => {
     if (suppressSyncRef.current) {
       suppressSyncRef.current = false;
@@ -52,7 +127,6 @@ export default function ReactRuntime({
     }
   }, [currentMomentId]);
 
-  // Listen for postMessage from iframe
   useEffect(() => {
     function handler(e: MessageEvent) {
       if (!e.data) return;
@@ -104,7 +178,7 @@ export default function ReactRuntime({
               <div className="flex flex-col items-center gap-3">
                 <span className="w-5 h-5 rounded-full border-2 border-zinc-700 border-t-indigo-400 animate-spin" />
                 <p className="text-zinc-500 text-xs">
-                  {isBuilding ? 'Building screen…' : 'No component code yet'}
+                  {isBuilding ? 'Building screen...' : 'No component code yet'}
                 </p>
               </div>
             </div>
@@ -119,64 +193,68 @@ export default function ReactRuntime({
             />
           )}
         </div>
+        <EditBar appMap={appMap} currentMomentId={currentMomentId} />
       </div>
     );
   }
 
   // Mobile
   return (
-    <div className="w-[420px] shrink-0 border-l border-zinc-800 flex items-center justify-center bg-zinc-950 py-6">
-      <div className="flex flex-col items-center gap-3">
-        <div className="relative">
-          <div
-            className="bg-zinc-900 rounded-[40px] border-[3px] border-zinc-700 shadow-2xl overflow-hidden"
-            style={{ width: phoneWidth }}
-          >
-            <div className="h-8 bg-zinc-900 flex items-center justify-center">
-              <div className="w-20 h-4 bg-zinc-800 rounded-b-xl" />
-            </div>
+    <div className="w-[420px] shrink-0 border-l border-zinc-800 flex flex-col bg-zinc-950">
+      <div className="flex-1 flex items-center justify-center py-6">
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
             <div
-              className="bg-white overflow-hidden relative"
-              style={{ height: Math.round(phoneWidth * 1.875) }}
+              className="bg-zinc-900 rounded-[40px] border-[3px] border-zinc-700 shadow-2xl overflow-hidden"
+              style={{ width: phoneWidth }}
             >
-              {isBuilding || !srcdoc ? (
-                <div className="w-full h-full flex items-center justify-center bg-zinc-950">
-                  <div className="flex flex-col items-center gap-3 px-6">
-                    <span className="w-5 h-5 rounded-full border-2 border-zinc-700 border-t-indigo-400 animate-spin" />
-                    <p className="text-zinc-500 text-xs text-center">
-                      {isBuilding ? 'Building screen…' : 'No component code yet'}
-                    </p>
+              <div className="h-8 bg-zinc-900 flex items-center justify-center">
+                <div className="w-20 h-4 bg-zinc-800 rounded-b-xl" />
+              </div>
+              <div
+                className="bg-white overflow-hidden relative"
+                style={{ height: Math.round(phoneWidth * 1.875) }}
+              >
+                {isBuilding || !srcdoc ? (
+                  <div className="w-full h-full flex items-center justify-center bg-zinc-950">
+                    <div className="flex flex-col items-center gap-3 px-6">
+                      <span className="w-5 h-5 rounded-full border-2 border-zinc-700 border-t-indigo-400 animate-spin" />
+                      <p className="text-zinc-500 text-xs text-center">
+                        {isBuilding ? 'Building screen...' : 'No component code yet'}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <iframe
-                  ref={iframeRef}
-                  key={currentMomentId}
-                  srcDoc={srcdoc}
-                  className="w-full h-full border-0"
-                  sandbox="allow-scripts"
-                  title="App Runtime"
-                  style={{
-                    transform: 'scale(0.82)',
-                    transformOrigin: 'top left',
-                    width: '122%',
-                    height: '122%',
-                  }}
-                />
-              )}
-            </div>
-            <div className="h-6 bg-zinc-900 flex items-center justify-center">
-              <div className="w-24 h-1 bg-zinc-600 rounded-full" />
+                ) : (
+                  <iframe
+                    ref={iframeRef}
+                    key={currentMomentId}
+                    srcDoc={srcdoc}
+                    className="w-full h-full border-0"
+                    sandbox="allow-scripts"
+                    title="App Runtime"
+                    style={{
+                      transform: 'scale(0.82)',
+                      transformOrigin: 'top left',
+                      width: '122%',
+                      height: '122%',
+                    }}
+                  />
+                )}
+              </div>
+              <div className="h-6 bg-zinc-900 flex items-center justify-center">
+                <div className="w-24 h-1 bg-zinc-600 rounded-full" />
+              </div>
             </div>
           </div>
-        </div>
 
-        {currentMoment && (
-          <p className="text-zinc-500 text-xs text-center truncate max-w-[280px]">
-            {currentMoment.label}
-          </p>
-        )}
+          {currentMoment && (
+            <p className="text-zinc-500 text-xs text-center truncate max-w-[280px]">
+              {currentMoment.label}
+            </p>
+          )}
+        </div>
       </div>
+      <EditBar appMap={appMap} currentMomentId={currentMomentId} />
     </div>
   );
 }
@@ -198,7 +276,7 @@ function MobileEmptyState({ isBuilding, phoneWidth }: { isBuilding: boolean; pho
           {isBuilding ? (
             <>
               <span className="w-6 h-6 rounded-full border-2 border-zinc-700 border-t-indigo-400 animate-spin" />
-              <p className="text-zinc-400 text-sm font-medium">Building your app…</p>
+              <p className="text-zinc-400 text-sm font-medium">Building your app...</p>
             </>
           ) : (
             <>
@@ -236,7 +314,7 @@ function WebEmptyState({ isBuilding }: { isBuilding: boolean }) {
         {isBuilding ? (
           <div className="flex flex-col items-center gap-3">
             <span className="w-6 h-6 rounded-full border-2 border-zinc-700 border-t-indigo-400 animate-spin" />
-            <p className="text-zinc-400 text-sm font-medium">Building your app…</p>
+            <p className="text-zinc-400 text-sm font-medium">Building your app...</p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3">

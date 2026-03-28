@@ -374,6 +374,7 @@ The JSON must follow this exact structure:
       "type": "ui",
       "preview": "Detailed description of what this screen or step looks like to the user",
       "promptTemplate": "ONLY for type=ai moments: describe the Claude prompt that would run here, e.g. 'You are a fitness coach. Given {{goal}} and {{fitnessLevel}}, generate a weekly workout plan.'",
+      "branchOf": "OPTIONAL — parent moment ID when this is a conditional branch variant (see BRANCH NODES below)",
       "position": { "x": 0, "y": 0 },
       "screenSpec": {
         "eyebrow": "Optional short section label",
@@ -430,6 +431,23 @@ Rules:
 - Create edges connecting moments within each journey in sequence
 - Add cross-journey edges where flows naturally intersect
 - All IDs must be unique, lowercase, with hyphens only
+
+BRANCH NODES — conditional paths that fork from a parent moment:
+- When a moment has multiple possible outcomes (success/failure, different choices, conditional paths), create BRANCH NODES.
+- A branch node is a moment with "branchOf": "parent-moment-id" — it represents one conditional outcome of the parent.
+- Branch nodes are hidden by default on the canvas and expand when the parent is clicked, keeping the map clean.
+- Every app MUST have at least 1-2 branch points. Real apps always have conditional flows.
+- Example: A "Login" screen has two outcomes:
+    { "id": "login-success", "branchOf": "login", "label": "Login Success", ... }
+    { "id": "login-error", "branchOf": "login", "label": "Login Failed", ... }
+  With edges: login → login-success → dashboard, login → login-error → login (retry)
+- Example: A "Pick Plan" screen branches on the selected plan:
+    { "id": "free-plan-setup", "branchOf": "pick-plan", "label": "Free Plan Setup", ... }
+    { "id": "pro-plan-checkout", "branchOf": "pick-plan", "label": "Pro Checkout", ... }
+- Position branch nodes 150px below their parent (same x, y + 150)
+- Branch nodes belong to the same journeyId as their parent
+- Create edges FROM the parent TO each branch node, AND from each branch node to its next destination
+- Think about: What if the user cancels? What if validation fails? What if they choose option A vs B? These are branches.
 
 CRITICAL — screenSpec must be real UI, not text descriptions:
 - "ui" moments: MUST have at minimum 2-3 real interactive components (inputs, choice-cards, chip-groups). NEVER a screen with only a hero component and nothing else.
