@@ -101,6 +101,21 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
   const color = JOURNEY_COLORS[journeyIndex % JOURNEY_COLORS.length];
   const journey = appMap?.journeys.find((j) => j.id === moment.journeyId);
 
+  // Handle navigation from the preview iframe — select the target moment
+  useEffect(() => {
+    function handler(e: MessageEvent) {
+      if (!e.data) return;
+      if (e.data.type === 'navigate' && e.data.momentId) {
+        const targetExists = appMap?.moments.some((m) => m.id === e.data.momentId);
+        if (targetExists) {
+          selectMoment(e.data.momentId);
+        }
+      }
+    }
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [appMap?.moments, selectMoment]);
+
   useEffect(() => {
     const update = () => {
       if (appMap?.appPlatform === 'web') { setPreviewWidth(420); return; }
