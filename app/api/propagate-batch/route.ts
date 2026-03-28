@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { Moment, Journey, AppMap } from '@/lib/types';
+import { buildFallbackScreenSpec } from '@/lib/runtime';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -62,12 +63,26 @@ Return ONLY:
     )
   );
 
-  const updates: Record<string, { description?: string; preview?: string; mockHtml: null }> = {};
+  const updates: Record<string, { description?: string; preview?: string; screenSpec?: Moment['screenSpec']; mockHtml: null }> = {};
   for (const result of results) {
     if (result.status === 'fulfilled') {
       const { id, description, preview } = result.value;
-      // Clear mockHtml so the node re-streams its updated screen next time it's viewed
-      updates[id] = { description, preview, mockHtml: null };
+      const targetMoment = appMap.moments.find((moment) => moment.id === id);
+      updates[id] = {
+        description,
+        preview,
+        screenSpec: targetMoment
+          ? buildFallbackScreenSpec(
+              {
+                ...targetMoment,
+                description: description ?? targetMoment.description,
+                preview: preview ?? targetMoment.preview,
+              },
+              appMap
+            )
+          : undefined,
+        mockHtml: null,
+      };
     }
   }
 

@@ -1,4 +1,5 @@
 import { AppMap } from './types';
+import { withPulseRuntime } from './pulse-runtime';
 import {
   WELCOME_HTML,
   CREATE_ACCOUNT_HTML,
@@ -23,10 +24,11 @@ import {
   AI_DEBRIEF_HTML,
 } from './demo-screens';
 
-export const DEMO_MAP: AppMap = {
+const BASE_DEMO_MAP: AppMap = {
   appName: 'Pulse — AI Fitness Coach',
   appDescription:
     'An AI-powered fitness app that generates personalised workouts, tracks progress, and adapts your plan in real time based on your performance and goals.',
+  appPlatform: 'mobile',
   journeys: [
     {
       id: 'onboarding',
@@ -106,6 +108,36 @@ Design a personalised 8-week Foundation Builder program.
 Return JSON: { planName, weeklySchedule[], milestones[], aiReasoning }`,
     },
     {
+      id: 'goal-beginner-foundation',
+      journeyId: 'onboarding',
+      label: 'Foundation Ramp',
+      type: 'ui',
+      description: 'Introduces the first two training phases so the beginner plan ramps skill and consistency gradually.',
+      preview: 'A clear 8-week roadmap card showing movement-pattern foundations, habit targets, and a low-friction starting volume.',
+      position: { x: 0, y: 0 },
+      parentMomentId: 'goal-beginner',
+    },
+    {
+      id: 'goal-beginner-schedule',
+      journeyId: 'onboarding',
+      label: 'Weekly Habit Builder',
+      type: 'data',
+      description: 'Translates the beginner plan into an easy 3-day weekly schedule with recovery spacing.',
+      preview: 'Simple weekly cadence cards for Monday, Wednesday, Friday sessions with rest-day callouts and habit checkpoints.',
+      position: { x: 280, y: 0 },
+      parentMomentId: 'goal-beginner',
+    },
+    {
+      id: 'goal-beginner-summary',
+      journeyId: 'onboarding',
+      label: 'Beginner Plan Summary',
+      type: 'ui',
+      description: 'Wraps the beginner plan into a final summary before entering the workout dashboard.',
+      preview: 'Final recap with 8-week focus, weekly cadence, first session recommendation, and a start-plan CTA.',
+      position: { x: 560, y: 0 },
+      parentMomentId: 'goal-beginner',
+    },
+    {
       id: 'goal-intermediate',
       journeyId: 'onboarding',
       label: 'Plan: Intermediate',
@@ -126,6 +158,38 @@ Design a personalised 12-week Strength & Conditioning program.
 Return JSON: { planName, weeklySchedule[], milestones[], aiReasoning }`,
     },
     {
+      id: 'goal-intermediate-split',
+      journeyId: 'onboarding',
+      label: 'Upper / Lower Split',
+      type: 'ui',
+      description: 'Breaks the intermediate plan into a balanced 4-day upper/lower schedule with clear weekly rhythm.',
+      preview: 'Four-day split cards with upper/lower emphasis, recovery spacing, and a progression note for the week.',
+      position: { x: 0, y: 0 },
+      parentMomentId: 'goal-intermediate',
+    },
+    {
+      id: 'goal-intermediate-progression',
+      journeyId: 'onboarding',
+      label: 'Progression Rules',
+      type: 'ai',
+      description: 'Explains how progressive overload, rep targets, and deload pacing are applied to the plan.',
+      preview: 'Progression framework cards showing volume targets, load increases, and when to deload.',
+      position: { x: 280, y: 0 },
+      parentMomentId: 'goal-intermediate',
+      promptTemplate: `You are Pulse AI. Turn an intermediate strength goal into clear weekly progression rules.
+Return JSON: { split, progressionRules[], deloadLogic, whyItWorks }`,
+    },
+    {
+      id: 'goal-intermediate-summary',
+      journeyId: 'onboarding',
+      label: 'Intermediate Plan Summary',
+      type: 'ui',
+      description: 'Final intermediate plan recap with weekly schedule, overload guidance, and first session recommendation.',
+      preview: 'Plan summary screen with upper/lower cadence, overload rules, checkpoints, and a start-plan CTA.',
+      position: { x: 560, y: 0 },
+      parentMomentId: 'goal-intermediate',
+    },
+    {
       id: 'goal-advanced',
       journeyId: 'onboarding',
       label: 'Plan: Advanced',
@@ -142,8 +206,50 @@ User profile:
 - Available days: {{availableDays}} / week
 - Equipment: {{equipment}}
 
-Design a 16-week Power & Hypertrophy program with undulating periodisation.
+      Design a 16-week Power & Hypertrophy program with undulating periodisation.
 Return JSON: { planName, weeklySchedule[], milestones[], deloadWeeks[], aiReasoning }`,
+    },
+    {
+      id: 'goal-advanced-split',
+      journeyId: 'onboarding',
+      label: 'Advanced Split Builder',
+      type: 'ui',
+      description: 'Defines the weekly Push/Pull/Legs split and how training days are distributed across the week.',
+      preview: 'Weekly calendar builder with 5 training days, color-coded push/pull/legs cards, and a compact recovery balance summary.',
+      position: { x: 0, y: 0 },
+      parentMomentId: 'goal-advanced',
+    },
+    {
+      id: 'goal-advanced-periodization',
+      journeyId: 'onboarding',
+      label: 'Periodization Blocks',
+      type: 'ai',
+      description: 'Breaks the program into accumulation, intensification, and peak blocks with planned deload timing.',
+      preview: 'Three stacked mesocycle cards showing intensity, volume focus, and a clear deload week before the peak block.',
+      position: { x: 280, y: 0 },
+      parentMomentId: 'goal-advanced',
+      promptTemplate: `You are Pulse AI. Convert an advanced hypertrophy goal into clear mesocycles.
+Return JSON: { blockName, intensityFocus, volumeFocus, deloadTiming, whyItWorks }`,
+    },
+    {
+      id: 'goal-advanced-recovery',
+      journeyId: 'onboarding',
+      label: 'Recovery Constraints',
+      type: 'data',
+      description: 'Captures recovery rules, weekly fatigue limits, and conditions that trigger a lighter training week.',
+      preview: 'Recovery rule cards with sleep, fatigue, soreness, and performance triggers that adjust the plan cadence.',
+      position: { x: 560, y: 0 },
+      parentMomentId: 'goal-advanced',
+    },
+    {
+      id: 'goal-advanced-summary',
+      journeyId: 'onboarding',
+      label: 'Advanced Plan Summary',
+      type: 'ui',
+      description: 'Summarizes the full advanced plan, expected weekly cadence, and the first session recommendation.',
+      preview: 'A final recap screen with split overview, mesocycle timeline, recovery notes, and a start-plan CTA.',
+      position: { x: 840, y: 0 },
+      parentMomentId: 'goal-advanced',
     },
     {
       id: 'goal-athlete',
@@ -164,6 +270,38 @@ User profile:
 
 Design a 20-week Elite Performance program with structured mesocycles.
 Return JSON: { planName, mesocycles[], weeklySchedule[], milestones[], competitionSims[], aiReasoning }`,
+    },
+    {
+      id: 'goal-athlete-mesocycles',
+      journeyId: 'onboarding',
+      label: 'Performance Mesocycles',
+      type: 'ai',
+      description: 'Maps the athlete program into mesocycles for strength, speed, and competition readiness.',
+      preview: 'Mesocycle cards for strength, speed, taper, and competition simulation blocks across a 20-week runway.',
+      position: { x: 0, y: 0 },
+      parentMomentId: 'goal-athlete',
+      promptTemplate: `You are Pulse AI. Turn an elite athlete goal into clear mesocycles.
+Return JSON: { mesocycles[], priorityShifts[], readinessChecks[] }`,
+    },
+    {
+      id: 'goal-athlete-performance',
+      journeyId: 'onboarding',
+      label: 'Performance Constraints',
+      type: 'data',
+      description: 'Captures performance testing, recovery windows, and competition simulation checkpoints.',
+      preview: 'Performance checkpoint cards for sprint, power, and readiness testing with competition sim milestones.',
+      position: { x: 280, y: 0 },
+      parentMomentId: 'goal-athlete',
+    },
+    {
+      id: 'goal-athlete-summary',
+      journeyId: 'onboarding',
+      label: 'Athlete Plan Summary',
+      type: 'ui',
+      description: 'Summarizes the elite performance plan before handing off to the day-to-day workout dashboard.',
+      preview: 'Final athlete plan overview with mesocycle timeline, comp sim checkpoints, and a launch-plan CTA.',
+      position: { x: 560, y: 0 },
+      parentMomentId: 'goal-athlete',
     },
 
     // Daily Workout — y: 320
@@ -386,6 +524,19 @@ Return JSON: { meals[{ name, calories, protein, carbs, fat, prepTime, ingredient
     { id: 'e4b', source: 'goal-intermediate', target: 'workout-home', label: 'Plan ready' },
     { id: 'e4c', source: 'goal-advanced', target: 'workout-home', label: 'Plan ready' },
     { id: 'e4d', source: 'goal-athlete', target: 'workout-home', label: 'Plan ready' },
+    { id: 'e4a-1', source: 'goal-beginner-foundation', target: 'goal-beginner-schedule', label: 'Set weekly cadence' },
+    { id: 'e4a-2', source: 'goal-beginner-schedule', target: 'goal-beginner-summary', label: 'Review beginner plan' },
+    { id: 'e4a-3', source: 'goal-beginner-summary', target: 'workout-home', label: 'Start beginner plan' },
+    { id: 'e4b-1', source: 'goal-intermediate-split', target: 'goal-intermediate-progression', label: 'Define progression' },
+    { id: 'e4b-2', source: 'goal-intermediate-progression', target: 'goal-intermediate-summary', label: 'Review intermediate plan' },
+    { id: 'e4b-3', source: 'goal-intermediate-summary', target: 'workout-home', label: 'Start intermediate plan' },
+    { id: 'e4c-1', source: 'goal-advanced-split', target: 'goal-advanced-periodization', label: 'Define blocks' },
+    { id: 'e4c-2', source: 'goal-advanced-periodization', target: 'goal-advanced-recovery', label: 'Set recovery rules' },
+    { id: 'e4c-3', source: 'goal-advanced-recovery', target: 'goal-advanced-summary', label: 'Review full plan' },
+    { id: 'e4c-4', source: 'goal-advanced-summary', target: 'workout-home', label: 'Start advanced plan' },
+    { id: 'e4d-1', source: 'goal-athlete-mesocycles', target: 'goal-athlete-performance', label: 'Set checkpoints' },
+    { id: 'e4d-2', source: 'goal-athlete-performance', target: 'goal-athlete-summary', label: 'Review athlete plan' },
+    { id: 'e4d-3', source: 'goal-athlete-summary', target: 'workout-home', label: 'Start athlete plan' },
 
     // Workout
     { id: 'e5', source: 'workout-home', target: 'ai-workout', label: 'Start' },
@@ -408,3 +559,5 @@ Return JSON: { meals[{ name, calories, protein, carbs, fat, prepTime, ingredient
     { id: 'e15', source: 'log-meal', target: 'nutrition-log', label: 'Back to log' },
   ],
 };
+
+export const DEMO_MAP: AppMap = withPulseRuntime(BASE_DEMO_MAP);

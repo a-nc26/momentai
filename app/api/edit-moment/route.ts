@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { Moment, Journey, AppMap } from '@/lib/types';
+import { AppMap, Journey, Moment } from '@/lib/types';
+import { buildFallbackScreenSpec } from '@/lib/runtime';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -12,206 +13,170 @@ export async function POST(req: NextRequest) {
     appMap,
   }: { moment: Moment; change: string; journey: Journey; appMap: AppMap } = await req.json();
 
-  // Build full moment list context for downstream impact analysis
   const allMomentsContext = appMap.moments
-    .filter((m) => m.id !== moment.id)
-    .map((m) => `  { "id": "${m.id}", "label": "${m.label}", "description": "${m.description.slice(0, 100).replace(/"/g, "'")}" }`)
+    .filter((entry) => entry.id !== moment.id)
+    .map((entry) => `  { "id": "${entry.id}", "label": "${entry.label}", "type": "${entry.type}", "description": "${entry.description.slice(0, 120).replace(/"/g, "'")}" }`)
     .join('\n');
 
-  // Build edge context: edges directly connected to this moment
   const connectedEdges = appMap.edges.filter(
-    (e) => e.source === moment.id || e.target === moment.id
+    (edge) => edge.source === moment.id || edge.target === moment.id
   );
+
   const edgeContext = connectedEdges
-    .map((e) => {
-      const srcLabel = appMap.moments.find((m) => m.id === e.source)?.label ?? e.source;
-      const tgtLabel = appMap.moments.find((m) => m.id === e.target)?.label ?? e.target;
-      return `  { "id": "${e.id}", "source": "${e.source}" (${srcLabel}), "target": "${e.target}" (${tgtLabel})${e.label ? `, "label": "${e.label}"` : ''} }`;
+    .map((edge) => {
+      const sourceLabel = appMap.moments.find((entry) => entry.id === edge.source)?.label ?? edge.source;
+      const targetLabel = appMap.moments.find((entry) => entry.id === edge.target)?.label ?? edge.target;
+      return `  { "id": "${edge.id}", "source": "${edge.source}" (${sourceLabel}), "target": "${edge.target}" (${targetLabel})${edge.label ? `, "label": "${edge.label}"` : ''} }`;
     })
     .join('\n');
 
-  // Run metadata update and mock regeneration in parallel
-  const [metaMessage, mockMessage] = await Promise.all([
-    // 1. Update moment metadata + detect new steps + structural wiring
-    client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
-      messages: [
-        {
-          role: 'user',
-          content: `You are editing a specific Moment in an app's Journey Map. Apply the requested change and return ONLY a JSON object — no markdown, no explanation.
-
-Current Moment:
-- ID: ${moment.id}
-- Journey ID: ${moment.journeyId}
-- Label: ${moment.label}
-- Type: ${moment.type}
-- Description: ${moment.description}
-- Preview: ${moment.preview}
-
-Current edges connected to this moment:
-${edgeContext || '  (none)'}
-
-Requested change: "${change}"
-
-Return ONLY this JSON:
-{
-  "label": "updated or unchanged",
-  "type": "ui|ai|data|auth",
-  "description": "updated or unchanged",
-  "preview": "updated or unchanged",
-  "newMoments": [],
-  "newEdges": [],
-  "removedEdgeIds": [],
-  "affectedMomentIds": [{"id": "moment-id", "reason": "one sentence why this moment is affected"}]
-}
-
-RULES FOR newMoments:
-Only add entries if the change introduces a genuinely NEW, distinct step that should appear as its own node (e.g. "add a day picker screen", "add a confirmation step"). Do NOT add new moments for style changes, copy changes, or single-screen additions.
-
-For each new moment:
-{
-  "id": "unique-lowercase-hyphenated-id",
-  "journeyId": "${moment.journeyId}",
-  "label": "Short step name",
-  "type": "ui|ai|data|auth",
-  "description": "What this step does",
-  "preview": "Detailed UI description of what appears on this screen"
-}
-
-RULES FOR newEdges and removedEdgeIds (CRITICAL — structural wiring):
-When inserting new moments, think about where they fit in the existing flow:
-- If a new moment logically comes BETWEEN the edited moment and its current downstream targets, you should:
-  1. List the downstream edge IDs in "removedEdgeIds" (so those direct connections are cut)
-  2. Add edges: edited_moment → new_moment → former_downstream_targets
-- If a new moment is a new branch OFF the edited moment (in addition to existing paths), just add the edge without removing anything.
-- Always connect every new moment to both an upstream source AND a downstream target where it makes sense.
-
-For newEdges:
-{ "id": "edge-unique-id", "source": "source-moment-id", "target": "target-moment-id", "label": "optional short label" }
-
-For removedEdgeIds: list edge IDs (strings) that should be deleted because they are replaced by the new routing.
-
-RULES FOR affectedMomentIds (DOWNSTREAM IMPACT):
-After applying this change, identify which OTHER moments in the app are semantically impacted — meaning their behavior, data inputs, or UI would need to change as a result.
-
-All other moments in this app:
-${allMomentsContext || '  (none)'}
-
-For each affected moment, return:
-{ "id": "moment-id", "reason": "One sentence explaining exactly how this change impacts this moment" }
-
-Only flag moments that are genuinely affected (e.g. they receive data introduced by this change, their copy references something that changed, their flow logic depends on a new step). Do NOT flag unrelated moments. Max 5.`,
-        },
-      ],
-    }),
-
-    // 2. Regenerate the HTML mock incorporating the change (Haiku: 5x faster)
-    client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: `You are a world-class product designer. Regenerate a pixel-perfect, production-quality HTML mockup for this app screen, incorporating the requested change.
+  const message = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4096,
+    messages: [
+      {
+        role: 'user',
+        content: `You are editing a specific moment inside a mobile prototype builder. Return ONLY valid JSON.
 
 App: ${appMap.appName}
 Description: ${appMap.appDescription}
 Journey: ${journey.name} — ${journey.description}
-Screen: ${moment.label}
-Current description: ${moment.description}
-Current UI context: ${moment.preview}
-CHANGE REQUESTED: "${change}"
 
-Generate a COMPLETE, self-contained HTML document that looks like a real, polished, production app screen incorporating the change above.
+Current app runtime schema:
+${JSON.stringify(appMap.stateSchema ?? [], null, 2)}
 
-CRITICAL TECHNICAL REQUIREMENTS:
-- Do NOT use Google Fonts or any external CDN — the iframe is sandboxed
-- Use ONLY: font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-- All styles self-contained in a <style> tag — no external stylesheets
-- Light theme: white/light-gray backgrounds, dark text (#111 or #1F2937), high contrast
-- 390px wide mobile layout, body margin 0, padding 0, min-height 100vh
+Current moment:
+- ID: ${moment.id}
+- Label: ${moment.label}
+- Type: ${moment.type}
+- Description: ${moment.description}
+- Preview: ${moment.preview}
+- Existing screenSpec: ${JSON.stringify(moment.screenSpec ?? null)}
 
-VISUAL QUALITY:
-- Real, specific content — no Lorem ipsum
-- Color palette matching "${appMap.appName}" domain
-- Cards: white bg, border-radius 16px, box-shadow 0 1px 3px rgba(0,0,0,0.08)
-- Inputs: border 1.5px solid #E5E7EB, border-radius 10px, padding 12px 14px
-- Buttons: border-radius 12px, padding 14px 20px, font-weight 600
-- Status bar (9:41 time, battery/signal), bottom safe area
-- Proper typography hierarchy, generous spacing
-- Realistic data matching the app
+Connected edges:
+${edgeContext || '  (none)'}
 
-Return ONLY the raw HTML. No markdown. No code fences. Start with <!DOCTYPE html>.`,
-        },
-      ],
-    }),
-  ]);
+Other moments in the app:
+${allMomentsContext || '  (none)'}
 
-  // Parse metadata
-  const metaText = (metaMessage.content[0] as { type: string; text: string }).text;
-  const stripped = metaText.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+User change request:
+"${change}"
 
-  // Parse mock HTML — strip fences then seek the actual HTML start
-  let mockHtml = (mockMessage.content[0] as { type: string; text: string }).text.trim();
-  mockHtml = mockHtml.replace(/^```html?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-  const htmlStart = mockHtml.search(/<!DOCTYPE html>/i);
-  if (htmlStart > 0) mockHtml = mockHtml.slice(htmlStart);
+Return ONLY this JSON shape:
+{
+  "label": "updated label",
+  "type": "ui|ai|data|auth",
+  "description": "updated description",
+  "preview": "updated preview",
+  "screenSpec": {
+    "eyebrow": "Short label",
+    "title": "Screen title",
+    "subtitle": "Supporting copy",
+    "progress": { "current": 1, "total": 4 },
+    "components": [],
+    "actions": []
+  },
+  "stateSchema": [],
+  "initialState": {},
+  "newMoments": [],
+  "newEdges": [],
+  "removedEdgeIds": [],
+  "affectedMomentIds": [{"id": "moment-id", "reason": "why this downstream moment is affected"}]
+}
 
-  // Reject truncated responses — must have closing tags and real body content
-  const isValidHtml =
-    mockHtml.toLowerCase().includes('<!doctype html') &&
-    (mockHtml.toLowerCase().includes('</body>') || mockHtml.toLowerCase().includes('</html>')) &&
-    mockHtml.length > 500;
+Rules:
+- This is mobile-only v1
+- Do NOT return HTML
+- The moment must remain runnable in a constrained runtime schema
+- Supported component types: "hero", "input", "choice-cards", "chip-group", "notice", "summary-card", "stats-grid", "list", "spacer"
+- Supported action kinds: "navigate", "branch", "back"
+- If the edit adds a new input or new stateful choice, add or update the app-level stateSchema
+- If the edit adds a new screen, include it in newMoments with its own full screenSpec
+- If the edit inserts a screen into the flow, use removedEdgeIds and newEdges to rewire the graph correctly
+- Each action should use requiredKeys if it depends on user input
+- Return full stateSchema and full initialState after the edit, not partial diffs
+- Keep IDs lowercase and hyphenated
+- Only flag downstream moments that genuinely need updates`,
+      },
+    ],
+  });
+
+  const text = (message.content[0] as { type: string; text: string }).text;
+  const stripped = text.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
 
   try {
-    const meta = JSON.parse(stripped);
+    const parsed = JSON.parse(stripped);
 
-    // Compute smart positions for new moments
-    // Try to place them between the edited moment and its downstream nodes
-    const outgoingEdges = appMap.edges.filter((e) => e.source === moment.id);
+    const outgoingEdges = appMap.edges.filter((edge) => edge.source === moment.id);
     const downstreamMoments = outgoingEdges
-      .map((e) => appMap.moments.find((m) => m.id === e.target))
+      .map((edge) => appMap.moments.find((entry) => entry.id === edge.target))
       .filter(Boolean) as Moment[];
 
-    const newMoments = (meta.newMoments ?? []).map((m: Record<string, unknown>, i: number) => {
-      let x: number;
-      let y: number;
+    const updatedMoment: Moment = {
+      ...moment,
+      label: parsed.label ?? moment.label,
+      type: parsed.type ?? moment.type,
+      description: parsed.description ?? moment.description,
+      preview: parsed.preview ?? moment.preview,
+      screenSpec: parsed.screenSpec ?? buildFallbackScreenSpec(
+        {
+          ...moment,
+          label: parsed.label ?? moment.label,
+          type: parsed.type ?? moment.type,
+          description: parsed.description ?? moment.description,
+          preview: parsed.preview ?? moment.preview,
+        },
+        appMap
+      ),
+    };
+
+    const newMoments = (parsed.newMoments ?? []).map((entry: Record<string, unknown>, index: number) => {
+      let x = moment.position.x + 320 * (index + 1);
+      let y = moment.position.y;
 
       if (downstreamMoments.length > 0) {
-        // Place between edited moment and average downstream position
         const avgDownstreamX =
-          downstreamMoments.reduce((sum, dm) => sum + dm.position.x, 0) / downstreamMoments.length;
+          downstreamMoments.reduce((sum, downstream) => sum + downstream.position.x, 0) /
+          downstreamMoments.length;
         const avgDownstreamY =
-          downstreamMoments.reduce((sum, dm) => sum + dm.position.y, 0) / downstreamMoments.length;
-        x = Math.round((moment.position.x + avgDownstreamX) / 2) + i * 320;
+          downstreamMoments.reduce((sum, downstream) => sum + downstream.position.y, 0) /
+          downstreamMoments.length;
+        x = Math.round((moment.position.x + avgDownstreamX) / 2) + index * 300;
         y = Math.round((moment.position.y + avgDownstreamY) / 2);
-      } else {
-        // No downstream — place to the right
-        x = moment.position.x + 320 * (i + 1);
-        y = moment.position.y;
       }
 
-      return { ...m, position: { x, y } };
+      const candidateMoment: Moment = {
+        id: String(entry.id),
+        journeyId: String(entry.journeyId ?? moment.journeyId),
+        label: String(entry.label ?? 'New Screen'),
+        type: (entry.type as Moment['type']) ?? 'ui',
+        description: String(entry.description ?? 'New moment'),
+        preview: String(entry.preview ?? 'Generated screen'),
+        position: { x, y },
+        screenSpec: entry.screenSpec as Moment['screenSpec'],
+      };
+
+      return {
+        ...candidateMoment,
+        screenSpec: candidateMoment.screenSpec ?? buildFallbackScreenSpec(candidateMoment, appMap),
+      };
     });
 
-    // If new moments are being inserted, the edited moment's screen is structurally
-    // unchanged — don't replace its mockHtml with one that incorporates the new step.
-    // The new nodes will generate their own screens via lazy-load.
-    const finalMockHtml = newMoments.length > 0 ? null : (isValidHtml ? mockHtml : null);
-
-    // Build affectedMoments map: { momentId: reason }
     const affectedMoments: Record<string, string> = {};
-    for (const item of (meta.affectedMomentIds ?? [])) {
+    for (const item of parsed.affectedMomentIds ?? []) {
       if (item?.id && item?.reason) affectedMoments[item.id] = item.reason;
     }
 
     return NextResponse.json({
-      ...meta,
-      mockHtml: finalMockHtml,
+      ...updatedMoment,
+      stateSchema: parsed.stateSchema ?? appMap.stateSchema ?? [],
+      initialState: parsed.initialState ?? appMap.initialState ?? {},
+      runtimeVersion: 1,
+      appPlatform: 'mobile',
+      mockHtml: null,
       newMoments,
-      newEdges: meta.newEdges ?? [],
-      removedEdgeIds: meta.removedEdgeIds ?? [],
+      newEdges: parsed.newEdges ?? [],
+      removedEdgeIds: parsed.removedEdgeIds ?? [],
       affectedMoments,
     });
   } catch {

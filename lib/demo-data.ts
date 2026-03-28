@@ -3,6 +3,7 @@ import { AppMap } from './types';
 export const DEMO_APP_MAP: AppMap = {
   appName: 'FitFlow',
   appDescription: 'AI-powered fitness coaching app that creates personalized workout plans and tracks daily progress',
+  appPlatform: 'mobile',
   journeys: [
     { id: 'j-onboarding', name: 'Onboarding', description: 'First-time user setup and personalized plan generation' },
     { id: 'j-training', name: 'Training', description: 'Daily workout generation and session tracking' },

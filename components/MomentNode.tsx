@@ -24,14 +24,17 @@ type MomentNodeData = {
   journeyName: string;
   flagged?: boolean;
   flagReason?: string;
+  hasSubflow?: boolean;
+  subflowCount?: number;
+  branchCount?: number;
 };
 
 export default function MomentNode({ data, selected }: NodeProps) {
-  const { moment, color, journeyName, flagged, flagReason } = data as MomentNodeData;
+  const { moment, color, journeyName, flagged, flagReason, hasSubflow, subflowCount, branchCount } = data as MomentNodeData;
 
   return (
     <div
-      className="w-[220px] rounded-xl bg-zinc-900 shadow-2xl transition-all duration-150 cursor-pointer select-none"
+      className="w-[220px] rounded-xl bg-zinc-900 shadow-2xl transition-all duration-200 cursor-pointer select-none"
       style={{
         borderLeft: `3px solid ${flagged ? '#f59e0b' : color}`,
         outline: flagged
@@ -41,10 +44,11 @@ export default function MomentNode({ data, selected }: NodeProps) {
           : '2px solid transparent',
         outlineOffset: '3px',
         boxShadow: flagged
-          ? '0 0 0 4px rgba(245,158,11,0.12), 0 0 24px rgba(245,158,11,0.18)'
+          ? '0 0 0 4px rgba(245,158,11,0.2), 0 0 32px rgba(245,158,11,0.3)'
           : selected
-          ? `0 0 0 4px ${color}22, 0 0 28px ${color}30`
+          ? `0 0 0 4px ${color}55, 0 0 40px ${color}60, 0 0 80px ${color}25`
           : undefined,
+        transform: selected ? 'scale(1.03)' : undefined,
       }}
     >
       <Handle
@@ -68,10 +72,10 @@ export default function MomentNode({ data, selected }: NodeProps) {
             </span>
           ) : selected ? (
             <span
-              className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
-              style={{ color, background: `${color}18` }}
+              className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded animate-pulse"
+              style={{ color: '#fff', background: color }}
             >
-              Editing
+              ● Active
             </span>
           ) : (
             <Badge
@@ -100,6 +104,20 @@ export default function MomentNode({ data, selected }: NodeProps) {
             <p className="text-zinc-500 text-xs leading-relaxed line-clamp-2">
               {moment.description}
             </p>
+            {hasSubflow && (
+              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                {subflowCount} internal step{subflowCount === 1 ? '' : 's'}
+              </div>
+            )}
+            {(branchCount ?? 0) > 0 && (
+              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                  <path d="M5 1v4M2 8l3-3 3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {branchCount} branch{branchCount === 1 ? '' : 'es'} · click
+              </div>
+            )}
           </div>
         </div>
       </div>

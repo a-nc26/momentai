@@ -23,11 +23,15 @@ import { AppMap } from '@/lib/types';
 const nodeTypes = { momentNode: MomentNode };
 
 function buildNodes(appMap: AppMap, flaggedMoments: Record<string, string>): Node[] {
-  return appMap.moments.map((moment) => {
+  return appMap.moments
+    .filter((moment) => !moment.parentMomentId)
+    .map((moment) => {
     const journeyIndex = appMap.journeys.findIndex((j) => j.id === moment.journeyId);
     const color = JOURNEY_COLORS[journeyIndex % JOURNEY_COLORS.length];
     const journey = appMap.journeys.find((j) => j.id === moment.journeyId);
     const flagReason = flaggedMoments[moment.id];
+    const subflowCount = appMap.moments.filter((entry) => entry.parentMomentId === moment.id).length;
+    const branchCount = appMap.moments.filter((entry) => entry.branchOf === moment.id).length;
     return {
       id: moment.id,
       type: 'momentNode',
@@ -38,13 +42,22 @@ function buildNodes(appMap: AppMap, flaggedMoments: Record<string, string>): Nod
         journeyName: journey?.name ?? '',
         flagged: !!flagReason,
         flagReason: flagReason ?? '',
+        hasSubflow: subflowCount > 0,
+        subflowCount,
+        branchCount,
       },
     };
   });
 }
 
 function buildEdges(appMap: AppMap): Edge[] {
-  return appMap.edges.map((edge) => ({
+  const hiddenMomentIds = new Set(
+    appMap.moments.filter((moment) => moment.parentMomentId).map((moment) => moment.id)
+  );
+
+  return appMap.edges
+    .filter((edge) => !hiddenMomentIds.has(edge.source) && !hiddenMomentIds.has(edge.target))
+    .map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,

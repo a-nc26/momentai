@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * Like MockFrame but fetches and streams the HTML directly into the iframe
@@ -13,6 +13,7 @@ export default function StreamingMockFrame({
   width = 226,
   onComplete,
   fetchKey,
+  mode = 'mobile',
 }: {
   url: string;
   body: object;
@@ -22,17 +23,21 @@ export default function StreamingMockFrame({
    *  Pass a string derived only from the fields that matter (e.g. moment id + preview) to
    *  prevent unnecessary restarts when unrelated parts of the appMap change. */
   fetchKey?: string;
+  mode?: 'mobile' | 'web';
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(false);
+  const [streaming, setStreaming] = useState(false); // true once doc.open() called
   const [retryKey, setRetryKey] = useState(0);
 
+  const IS_WEB = mode === 'web';
+  const BASE_W = IS_WEB ? 1280 : 390;
   const SCREEN_W = width;
-  const SCALE = SCREEN_W / 390;
-  const IFRAME_H = 642;
+  const SCALE = SCREEN_W / BASE_W;
+  const IFRAME_H = IS_WEB ? 800 : 844;
   const SCREEN_H = Math.round(IFRAME_H * SCALE);
-  const PADDING = 10;
+  const PADDING = IS_WEB ? 8 : 10;
   const SHELL_W = SCREEN_W + PADDING * 2;
   const SHELL_H = SCREEN_H + PADDING * 2;
 
@@ -43,10 +48,28 @@ export default function StreamingMockFrame({
   // Use fetchKey if provided; otherwise fall back to full body serialisation
   const effectKey = fetchKey ?? JSON.stringify(body);
 
+  const scrollInsidePhone = useCallback(
+    (deltaY: number) => {
+      const iframe = iframeRef.current;
+      if (!iframe) return false;
+      const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+      const scroller = doc?.scrollingElement;
+      if (!scroller) return false;
+      const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+      if (maxScroll <= 0) return false;
+      const next = Math.max(0, Math.min(maxScroll, scroller.scrollTop + deltaY / SCALE));
+      const changed = Math.abs(next - scroller.scrollTop) > 0.5;
+      scroller.scrollTop = next;
+      return changed;
+    },
+    [SCALE]
+  );
+
   useEffect(() => {
     const abort = new AbortController();
     setDone(false);
     setError(false);
+    setStreaming(false);
 
     let accumulated = '';
     let docOpened = false;
@@ -86,6 +109,7 @@ export default function StreamingMockFrame({
             if (!doc) break;
             doc.open();
             docOpened = true;
+            setStreaming(true); // content is arriving — hide skeleton
           }
 
           if (doc) doc.write(accumulated);
@@ -132,37 +156,57 @@ export default function StreamingMockFrame({
         style={{
           width: SHELL_W,
           height: SHELL_H,
-          background: '#1c1c1e',
+          background: IS_WEB ? '#111827' : '#1c1c1e',
           padding: PADDING,
-          borderRadius: Math.round(36 * SCALE),
-          boxShadow: '0 0 0 1px #3a3a3c, 0 30px 80px rgba(0,0,0,0.6), inset 0 0 0 1px #48484a',
+          borderRadius: IS_WEB ? Math.round(16 * SCALE) : Math.round(36 * SCALE),
+          boxShadow: IS_WEB
+            ? '0 0 0 1px #374151, 0 24px 60px rgba(0,0,0,0.45), inset 0 0 0 1px #4b5563'
+            : '0 0 0 1px #3a3a3c, 0 30px 80px rgba(0,0,0,0.6), inset 0 0 0 1px #48484a',
         }}
       >
+        {IS_WEB && (
+          <div className="absolute left-3 top-2 z-10 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          </div>
+        )}
         {/* Screen */}
         <div
           className="relative overflow-hidden bg-white"
-          style={{ width: SCREEN_W, height: SCREEN_H, borderRadius: Math.round(28 * SCALE) }}
+          style={{
+            width: SCREEN_W,
+            height: SCREEN_H,
+            borderRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE),
+          }}
+          onWheel={(e) => {
+            if (scrollInsidePhone(e.deltaY)) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
         >
-          {/* Dynamic island */}
-          <div
-            className="absolute z-10 rounded-full bg-black"
-            style={{
-              width: Math.round(80 * SCALE),
-              height: Math.round(24 * SCALE),
-              top: Math.round(10 * SCALE),
-              left: '50%',
-              transform: 'translateX(-50%)',
-            }}
-          />
+          {!IS_WEB && (
+            <div
+              className="absolute z-10 rounded-full bg-black"
+              style={{
+                width: Math.round(80 * SCALE),
+                height: Math.round(24 * SCALE),
+                top: Math.round(10 * SCALE),
+                left: '50%',
+                transform: 'translateX(-50%)',
+              }}
+            />
+          )}
 
           <iframe
             ref={iframeRef}
             title="Screen preview"
-            scrolling="no"
+            scrolling="yes"
             sandbox="allow-scripts allow-same-origin"
             style={{
               border: 'none',
-              width: 390,
+              width: BASE_W,
               height: IFRAME_H,
               transform: `scale(${SCALE})`,
               transformOrigin: 'top left',
@@ -171,11 +215,41 @@ export default function StreamingMockFrame({
             }}
           />
 
+          {/* Loading skeleton — shows until streaming begins */}
+          {!streaming && !error && (
+            <div
+              className="absolute inset-0 bg-white flex flex-col"
+              style={{ borderRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE), padding: Math.round(14 * SCALE) }}
+            >
+              {/* Status bar */}
+              <div className="flex justify-between items-center mb-3" style={{ paddingTop: Math.round(6 * SCALE) }}>
+                <div className="rounded" style={{ height: Math.round(6 * SCALE), width: Math.round(28 * SCALE), background: '#e4e4e7' }} />
+                <div className="rounded" style={{ height: Math.round(6 * SCALE), width: Math.round(36 * SCALE), background: '#e4e4e7' }} />
+              </div>
+              {/* Title block */}
+              <div className="rounded mb-2" style={{ height: Math.round(14 * SCALE), width: '65%', background: '#e4e4e7' }} />
+              <div className="rounded mb-4" style={{ height: Math.round(9 * SCALE), width: '45%', background: '#f0f0f2' }} />
+              {/* Card blocks */}
+              {[0.85, 0.75, 0.9, 0.6].map((w, i) => (
+                <div key={i} className="rounded-lg mb-2" style={{ height: Math.round(38 * SCALE), width: `${w * 100}%`, background: i % 2 === 0 ? '#f4f4f5' : '#efefef' }} />
+              ))}
+              {/* Spinner + label at bottom */}
+              <div className="flex-1 flex flex-col items-center justify-end pb-3 gap-2">
+                <div
+                  className="rounded-full border-2 border-zinc-200 animate-spin"
+                  style={{ width: Math.round(16 * SCALE), height: Math.round(16 * SCALE), borderTopColor: '#6366f1' }}
+                />
+                <span style={{ fontSize: Math.round(9 * SCALE), color: '#71717a', fontWeight: 600 }}>Loading interactive screen...</span>
+                <span style={{ fontSize: Math.round(8 * SCALE), color: '#a1a1aa' }}>You will be able to scroll and click once ready</span>
+              </div>
+            </div>
+          )}
+
           {/* Error state overlay */}
           {error && (
             <div
               className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-900/95"
-              style={{ borderRadius: Math.round(28 * SCALE) }}
+              style={{ borderRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE) }}
             >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="text-zinc-600">
                 <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
@@ -192,8 +266,8 @@ export default function StreamingMockFrame({
           )}
 
           {/* Streaming progress bar — disappears when done */}
-          {!done && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden" style={{ borderBottomLeftRadius: Math.round(28 * SCALE), borderBottomRightRadius: Math.round(28 * SCALE) }}>
+          {!done && !error && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden z-20" style={{ borderBottomLeftRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE), borderBottomRightRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE) }}>
               <div
                 className="h-full bg-indigo-500 opacity-70"
                 style={{
@@ -207,32 +281,37 @@ export default function StreamingMockFrame({
       </div>
 
       {/* Volume buttons */}
-      {[Math.round(100 * SCALE), Math.round(140 * SCALE), Math.round(196 * SCALE)].map(
-        (top, i) => (
+      {!IS_WEB && (
+        <>
+          {/* Volume buttons */}
+          {[Math.round(100 * SCALE), Math.round(140 * SCALE), Math.round(196 * SCALE)].map(
+            (top, i) => (
+              <div
+                key={i}
+                className="absolute rounded-full"
+                style={{
+                  left: -3,
+                  top,
+                  width: 3,
+                  height: i === 0 ? Math.round(30 * SCALE) : Math.round(52 * SCALE),
+                  background: '#3a3a3c',
+                }}
+              />
+            )
+          )}
+          {/* Power button */}
           <div
-            key={i}
             className="absolute rounded-full"
             style={{
-              left: -3,
-              top,
+              right: -3,
+              top: Math.round(148 * SCALE),
               width: 3,
-              height: i === 0 ? Math.round(30 * SCALE) : Math.round(52 * SCALE),
+              height: Math.round(68 * SCALE),
               background: '#3a3a3c',
             }}
           />
-        )
+        </>
       )}
-      {/* Power button */}
-      <div
-        className="absolute rounded-full"
-        style={{
-          right: -3,
-          top: Math.round(148 * SCALE),
-          width: 3,
-          height: Math.round(68 * SCALE),
-          background: '#3a3a3c',
-        }}
-      />
 
       <style>{`
         @keyframes stream-slide {
