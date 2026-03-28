@@ -1,4 +1,9 @@
 export function buildSrcdoc(componentCode: string, state: Record<string, unknown>): string {
+  const escapedCode = componentCode
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$/g, '\\$');
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -38,127 +43,129 @@ export function buildSrcdoc(componentCode: string, state: Record<string, unknown
   .ui-tab-active { background: #fff; color: #18181b; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
   .ui-select { width: 100%; border-radius: 0.5rem; border: 1px solid #e4e4e7; padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none; background: #fff; cursor: pointer; appearance: none; }
   .ui-select:focus { border-color: #6366f1; }
+  .err-box { padding: 24px; font-family: monospace; font-size: 12px; color: #ef4444; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; margin: 16px; white-space: pre-wrap; word-break: break-all; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
 (function() {
-  const h = React.createElement;
+  var h = React.createElement;
 
-  function Button({ children, variant, size, className, onClick, disabled, ...props }) {
-    const base = 'ui-btn';
-    const v = variant === 'secondary' ? 'ui-btn-secondary'
+  function Button(props) {
+    var children = props.children, variant = props.variant, size = props.size, className = props.className, onClick = props.onClick, disabled = props.disabled;
+    var base = 'ui-btn';
+    var v = variant === 'secondary' ? 'ui-btn-secondary'
       : variant === 'ghost' ? 'ui-btn-ghost'
       : variant === 'destructive' ? 'ui-btn-destructive'
       : 'ui-btn-primary';
-    const s = size === 'sm' ? 'text-xs px-3 py-1.5' : size === 'lg' ? 'text-base px-6 py-3' : '';
-    return h('button', { className: [base, v, s, className].filter(Boolean).join(' '), onClick, disabled, ...props }, children);
+    var s = size === 'sm' ? 'text-xs px-3 py-1.5' : size === 'lg' ? 'text-base px-6 py-3' : '';
+    return h('button', { className: [base, v, s, className].filter(Boolean).join(' '), onClick: onClick, disabled: disabled }, children);
   }
 
-  function Card({ children, className, ...props }) {
-    return h('div', { className: ['ui-card', className].filter(Boolean).join(' '), ...props }, children);
-  }
-  function CardHeader({ children, className }) { return h('div', { className: ['p-4 pb-2', className].filter(Boolean).join(' ') }, children); }
-  function CardContent({ children, className }) { return h('div', { className: ['p-4 pt-0', className].filter(Boolean).join(' ') }, children); }
-  function CardTitle({ children, className }) { return h('h3', { className: ['text-lg font-semibold', className].filter(Boolean).join(' ') }, children); }
-  function CardDescription({ children, className }) { return h('p', { className: ['text-sm text-gray-500', className].filter(Boolean).join(' ') }, children); }
-  function CardFooter({ children, className }) { return h('div', { className: ['p-4 pt-0 flex items-center', className].filter(Boolean).join(' ') }, children); }
+  function Card(props) { return h('div', { className: ['ui-card', props.className].filter(Boolean).join(' ') }, props.children); }
+  function CardHeader(props) { return h('div', { className: ['p-4 pb-2', props.className].filter(Boolean).join(' ') }, props.children); }
+  function CardContent(props) { return h('div', { className: ['p-4 pt-0', props.className].filter(Boolean).join(' ') }, props.children); }
+  function CardTitle(props) { return h('h3', { className: ['text-lg font-semibold', props.className].filter(Boolean).join(' ') }, props.children); }
+  function CardDescription(props) { return h('p', { className: ['text-sm text-gray-500', props.className].filter(Boolean).join(' ') }, props.children); }
+  function CardFooter(props) { return h('div', { className: ['p-4 pt-0 flex items-center', props.className].filter(Boolean).join(' ') }, props.children); }
 
-  function Input({ className, type, ...props }) {
-    return h('input', { type: type || 'text', className: ['ui-input', className].filter(Boolean).join(' '), ...props });
-  }
-
-  function Textarea({ className, ...props }) {
-    return h('textarea', { className: ['ui-textarea', className].filter(Boolean).join(' '), ...props });
+  function Input(props) {
+    var rest = Object.assign({}, props);
+    delete rest.className;
+    return h('input', Object.assign({ type: props.type || 'text', className: ['ui-input', props.className].filter(Boolean).join(' ') }, rest));
   }
 
-  function Badge({ children, variant, className }) {
-    const cls = variant === 'destructive' ? 'bg-red-50 text-red-700 border-red-200'
-      : variant === 'success' ? 'bg-green-50 text-green-700 border-green-200'
-      : variant === 'outline' ? 'bg-transparent'
+  function Textarea(props) {
+    var rest = Object.assign({}, props);
+    delete rest.className;
+    return h('textarea', Object.assign({ className: ['ui-textarea', props.className].filter(Boolean).join(' ') }, rest));
+  }
+
+  function Badge(props) {
+    var cls = props.variant === 'destructive' ? 'bg-red-50 text-red-700 border-red-200'
+      : props.variant === 'success' ? 'bg-green-50 text-green-700 border-green-200'
+      : props.variant === 'outline' ? 'bg-transparent'
       : '';
-    return h('span', { className: ['ui-badge', cls, className].filter(Boolean).join(' ') }, children);
+    return h('span', { className: ['ui-badge', cls, props.className].filter(Boolean).join(' ') }, props.children);
   }
 
-  function Avatar({ children, className, src }) {
-    if (src) return h('img', { src, className: ['ui-avatar', className].filter(Boolean).join(' ') });
-    return h('div', { className: ['ui-avatar', className].filter(Boolean).join(' ') }, children);
+  function Avatar(props) {
+    if (props.src) return h('img', { src: props.src, className: ['ui-avatar', props.className].filter(Boolean).join(' ') });
+    return h('div', { className: ['ui-avatar', props.className].filter(Boolean).join(' ') }, props.children);
   }
-  function AvatarFallback({ children, className }) { return h('span', { className: className || '' }, children); }
+  function AvatarFallback(props) { return h('span', { className: props.className || '' }, props.children); }
+  function Separator(props) { return h('div', { className: ['ui-separator', props.className].filter(Boolean).join(' ') }); }
+  function Label(props) { return h('label', { className: ['ui-label', props.className].filter(Boolean).join(' '), htmlFor: props.htmlFor }, props.children); }
 
-  function Separator({ className }) { return h('div', { className: ['ui-separator', className].filter(Boolean).join(' ') }); }
-
-  function Label({ children, className, htmlFor }) { return h('label', { className: ['ui-label', className].filter(Boolean).join(' '), htmlFor }, children); }
-
-  function Switch({ checked, onCheckedChange, className }) {
+  function Switch(props) {
     return h('div', {
-      className: ['ui-switch', checked ? 'ui-switch-on' : 'ui-switch-off', className].filter(Boolean).join(' '),
-      onClick: function() { onCheckedChange && onCheckedChange(!checked); }
-    }, h('div', { className: 'ui-switch-thumb', style: { transform: checked ? 'translateX(1.25rem)' : 'translateX(0)' } }));
+      className: ['ui-switch', props.checked ? 'ui-switch-on' : 'ui-switch-off', props.className].filter(Boolean).join(' '),
+      onClick: function() { props.onCheckedChange && props.onCheckedChange(!props.checked); }
+    }, h('div', { className: 'ui-switch-thumb', style: { transform: props.checked ? 'translateX(1.25rem)' : 'translateX(0)' } }));
   }
 
-  function Tabs({ children, value, onValueChange, className }) {
-    return h('div', { className: className || '' },
-      React.Children.map(children, function(child) {
+  function Tabs(props) {
+    return h('div', { className: props.className || '' },
+      React.Children.map(props.children, function(child) {
         if (!child) return null;
-        return React.cloneElement(child, { _activeTab: value, _onTabChange: onValueChange });
+        return React.cloneElement(child, { _activeTab: props.value, _onTabChange: props.onValueChange });
       })
     );
   }
-  function TabsList({ children, className, _activeTab, _onTabChange }) {
-    return h('div', { className: ['ui-tabs-list', className].filter(Boolean).join(' ') },
-      React.Children.map(children, function(child) {
+  function TabsList(props) {
+    return h('div', { className: ['ui-tabs-list', props.className].filter(Boolean).join(' ') },
+      React.Children.map(props.children, function(child) {
         if (!child) return null;
-        return React.cloneElement(child, { _activeTab, _onTabChange });
+        return React.cloneElement(child, { _activeTab: props._activeTab, _onTabChange: props._onTabChange });
       })
     );
   }
-  function TabsTrigger({ children, value, className, _activeTab, _onTabChange }) {
-    const active = _activeTab === value;
+  function TabsTrigger(props) {
+    var active = props._activeTab === props.value;
     return h('button', {
-      className: ['ui-tab', active ? 'ui-tab-active' : '', className].filter(Boolean).join(' '),
-      onClick: function() { _onTabChange && _onTabChange(value); }
-    }, children);
+      className: ['ui-tab', active ? 'ui-tab-active' : '', props.className].filter(Boolean).join(' '),
+      onClick: function() { props._onTabChange && props._onTabChange(props.value); }
+    }, props.children);
   }
-  function TabsContent({ children, value, className, _activeTab }) {
-    if (_activeTab !== value) return null;
-    return h('div', { className: className || '' }, children);
+  function TabsContent(props) {
+    if (props._activeTab !== props.value) return null;
+    return h('div', { className: props.className || '' }, props.children);
   }
 
-  function Select({ children, value, onValueChange }) {
+  function Select(props) {
     return h('select', {
       className: 'ui-select',
-      value: value || '',
-      onChange: function(e) { onValueChange && onValueChange(e.target.value); }
-    }, children);
+      value: props.value || '',
+      onChange: function(e) { props.onValueChange && props.onValueChange(e.target.value); }
+    }, props.children);
   }
-  function SelectTrigger({ children }) { return children; }
-  function SelectValue({ placeholder }) { return h('option', { value: '', disabled: true }, placeholder); }
-  function SelectContent({ children }) { return children; }
-  function SelectItem({ children, value }) { return h('option', { value: value }, children); }
+  function SelectTrigger(props) { return props.children; }
+  function SelectValue(props) { return h('option', { value: '', disabled: true }, props.placeholder); }
+  function SelectContent(props) { return props.children; }
+  function SelectItem(props) { return h('option', { value: props.value }, props.children); }
 
-  function Sheet({ children }) { return h(React.Fragment, null, children); }
-  function SheetContent({ children, className }) { return h('div', { className: ['fixed inset-y-0 right-0 w-80 bg-white shadow-xl z-50 p-6', className].filter(Boolean).join(' ') }, children); }
-  function SheetHeader({ children, className }) { return h('div', { className: ['mb-4', className].filter(Boolean).join(' ') }, children); }
-  function SheetTitle({ children, className }) { return h('h2', { className: ['text-lg font-semibold', className].filter(Boolean).join(' ') }, children); }
+  function Sheet(props) { return h(React.Fragment, null, props.children); }
+  function SheetContent(props) { return h('div', { className: ['fixed inset-y-0 right-0 w-80 bg-white shadow-xl z-50 p-6', props.className].filter(Boolean).join(' ') }, props.children); }
+  function SheetHeader(props) { return h('div', { className: ['mb-4', props.className].filter(Boolean).join(' ') }, props.children); }
+  function SheetTitle(props) { return h('h2', { className: ['text-lg font-semibold', props.className].filter(Boolean).join(' ') }, props.children); }
 
-  function Dialog({ children, open }) { if (!open) return null; return h(React.Fragment, null, children); }
-  function DialogContent({ children, className }) {
+  function Dialog(props) { if (!props.open) return null; return h(React.Fragment, null, props.children); }
+  function DialogContent(props) {
     return h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/50' },
-      h('div', { className: ['bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl', className].filter(Boolean).join(' ') }, children)
+      h('div', { className: ['bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl', props.className].filter(Boolean).join(' ') }, props.children)
     );
   }
-  function DialogHeader({ children, className }) { return h('div', { className: ['mb-4', className].filter(Boolean).join(' ') }, children); }
-  function DialogTitle({ children, className }) { return h('h2', { className: ['text-lg font-semibold', className].filter(Boolean).join(' ') }, children); }
+  function DialogHeader(props) { return h('div', { className: ['mb-4', props.className].filter(Boolean).join(' ') }, props.children); }
+  function DialogTitle(props) { return h('h2', { className: ['text-lg font-semibold', props.className].filter(Boolean).join(' ') }, props.children); }
 
   window.UI = {
-    Button, Card, CardHeader, CardContent, CardTitle, CardDescription, CardFooter,
-    Input, Textarea, Badge, Avatar, AvatarFallback, Separator, Label, Switch,
-    Tabs, TabsList, TabsTrigger, TabsContent,
-    Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-    Sheet, SheetContent, SheetHeader, SheetTitle,
-    Dialog, DialogContent, DialogHeader, DialogTitle,
+    Button: Button, Card: Card, CardHeader: CardHeader, CardContent: CardContent, CardTitle: CardTitle, CardDescription: CardDescription, CardFooter: CardFooter,
+    Input: Input, Textarea: Textarea, Badge: Badge, Avatar: Avatar, AvatarFallback: AvatarFallback, Separator: Separator, Label: Label, Switch: Switch,
+    Tabs: Tabs, TabsList: TabsList, TabsTrigger: TabsTrigger, TabsContent: TabsContent,
+    Select: Select, SelectTrigger: SelectTrigger, SelectValue: SelectValue, SelectContent: SelectContent, SelectItem: SelectItem,
+    Sheet: Sheet, SheetContent: SheetContent, SheetHeader: SheetHeader, SheetTitle: SheetTitle,
+    Dialog: Dialog, DialogContent: DialogContent, DialogHeader: DialogHeader, DialogTitle: DialogTitle,
   };
 
   window.useState = React.useState;
@@ -168,22 +175,48 @@ export function buildSrcdoc(componentCode: string, state: Record<string, unknown
   window.useRef = React.useRef;
 })();
 <\/script>
-<script type="text/babel">
-${componentCode}
-
+<script>
 (function() {
-  const Comp = window.__SCREEN_COMPONENT__;
-  if (!Comp) {
-    document.getElementById('root').innerHTML = '<p style="padding:20px;color:#999;">Component not found</p>';
+  var root = document.getElementById('root');
+  var initialState = ${JSON.stringify(state)};
+
+  function showError(msg) {
+    root.innerHTML = '<div class="err-box">' + msg + '<\\/div>';
+  }
+
+  if (typeof Babel === 'undefined') {
+    showError('Babel failed to load. Check your internet connection and refresh.');
     return;
   }
 
-  const initialState = ${JSON.stringify(state)};
+  var componentCode = \`${escapedCode}\`;
+  var transpiled;
+  try {
+    transpiled = Babel.transform(componentCode, { presets: ['react'] }).code;
+  } catch (e) {
+    showError('Babel transpile error:\\n' + (e.message || e));
+    return;
+  }
+
+  try {
+    new Function(transpiled)();
+  } catch (e) {
+    showError('Component init error:\\n' + (e.message || e));
+    return;
+  }
+
+  var Comp = window.__SCREEN_COMPONENT__;
+  if (!Comp) {
+    showError('Component did not register. Make sure the code sets window.__SCREEN_COMPONENT__.');
+    return;
+  }
 
   function RuntimeBridge() {
-    const [appState, setAppState] = React.useState(initialState);
+    var _state = React.useState(initialState);
+    var appState = _state[0];
+    var setAppState = _state[1];
 
-    React.useEffect(() => {
+    React.useEffect(function() {
       function handler(e) {
         if (!e.data) return;
         if (e.data.type === 'updateState') {
@@ -207,10 +240,18 @@ ${componentCode}
       window.parent.postMessage({ type: 'stateChange', key: key, value: value }, '*');
     }
 
-    return React.createElement(Comp, { state: appState, onNavigate: onNavigate, onStateChange: onStateChange });
+    try {
+      return React.createElement(Comp, { state: appState, onNavigate: onNavigate, onStateChange: onStateChange });
+    } catch(e) {
+      return React.createElement('div', { className: 'err-box' }, 'Render error: ' + (e.message || e));
+    }
   }
 
-  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(RuntimeBridge));
+  try {
+    ReactDOM.createRoot(root).render(React.createElement(RuntimeBridge));
+  } catch (e) {
+    showError('React render error:\\n' + (e.message || e));
+  }
 })();
 <\/script>
 </body>

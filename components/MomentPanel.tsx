@@ -19,6 +19,29 @@ const TYPE_LABELS: Record<string, string> = {
 const PHONE_WIDTH = 390;
 const PHONE_HEIGHT = 844;
 
+function PreviewSkeleton({ scale }: { scale: number }) {
+  return (
+    <div className="absolute inset-0 bg-white flex flex-col z-10" style={{ padding: Math.round(14 * scale) }}>
+      <div className="flex justify-between items-center mb-3" style={{ paddingTop: Math.round(6 * scale) }}>
+        <div className="rounded" style={{ height: Math.round(6 * scale), width: Math.round(28 * scale), background: '#e4e4e7' }} />
+        <div className="rounded" style={{ height: Math.round(6 * scale), width: Math.round(36 * scale), background: '#e4e4e7' }} />
+      </div>
+      <div className="rounded mb-2" style={{ height: Math.round(14 * scale), width: '65%', background: '#e4e4e7' }} />
+      <div className="rounded mb-4" style={{ height: Math.round(9 * scale), width: '45%', background: '#f0f0f2' }} />
+      {[0.85, 0.75, 0.9, 0.6].map((w, i) => (
+        <div key={i} className="rounded-lg mb-2" style={{ height: Math.round(38 * scale), width: `${w * 100}%`, background: i % 2 === 0 ? '#f4f4f5' : '#efefef' }} />
+      ))}
+      <div className="flex-1 flex flex-col items-center justify-end pb-3 gap-2">
+        <div
+          className="rounded-full border-2 border-zinc-200 animate-spin"
+          style={{ width: Math.round(16 * scale), height: Math.round(16 * scale), borderTopColor: '#6366f1' }}
+        />
+        <span style={{ fontSize: Math.round(9 * scale), color: '#71717a', fontWeight: 600 }}>Loading screen...</span>
+      </div>
+    </div>
+  );
+}
+
 function ComponentPreview({
   componentCode,
   state,
@@ -30,11 +53,21 @@ function ComponentPreview({
   previewWidth: number;
   platform: 'mobile' | 'web';
 }) {
+  const [ready, setReady] = useState(false);
   const srcdoc = buildSrcdoc(componentCode, state);
+
+  useEffect(() => {
+    setReady(false);
+    function handler(e: MessageEvent) {
+      if (e.data?.type === 'iframeReady') setReady(true);
+    }
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [componentCode]);
 
   if (platform === 'web') {
     return (
-      <div className="w-full rounded-xl overflow-hidden border border-zinc-800" style={{ height: 260 }}>
+      <div className="w-full rounded-xl overflow-hidden border border-zinc-800 relative" style={{ height: 260 }}>
         <iframe
           key={componentCode.slice(0, 40)}
           srcDoc={srcdoc}
@@ -42,6 +75,7 @@ function ComponentPreview({
           sandbox="allow-scripts"
           title="Screen Preview"
         />
+        {!ready && <PreviewSkeleton scale={260 / PHONE_HEIGHT} />}
       </div>
     );
   }
@@ -71,6 +105,7 @@ function ComponentPreview({
             transformOrigin: 'top left',
           }}
         />
+        {!ready && <PreviewSkeleton scale={scale} />}
       </div>
       <div className="h-4 bg-zinc-900 flex items-center justify-center">
         <div className="w-14 h-1 bg-zinc-600 rounded-full" />
@@ -319,7 +354,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
       {/* ── Edit bar — ALWAYS visible at the bottom ── */}
       <div className="shrink-0 border-t border-zinc-800 bg-zinc-900/95 backdrop-blur-sm p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-zinc-400 text-[10px] font-medium uppercase tracking-wider">Edit this Screen</p>
+          <p className="text-zinc-400 text-[10px] font-medium uppercase tracking-wider">Edit this Moment</p>
           <button
             onClick={handleRegenerate}
             disabled={isRegenerating || isEditing}
