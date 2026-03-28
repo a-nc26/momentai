@@ -11,6 +11,7 @@ import { JOURNEY_COLORS } from '@/lib/colors';
 import MockFrame from './MockFrame';
 import StreamingMockFrame from './StreamingMockFrame';
 import MobileRuntime from './runtime/MobileRuntime';
+import { buildSrcdoc } from '@/lib/buildSrcdoc';
 
 function deriveAiInputsOutputs(moment: Moment): { inputs: string; outputs: string } | null {
   const spec = moment.screenSpec;
@@ -33,6 +34,64 @@ function deriveAiInputsOutputs(moment: Moment): { inputs: string; outputs: strin
 const TYPE_LABELS: Record<string, string> = {
   ui: 'UI Screen', ai: 'AI-Powered', data: 'Data Layer', auth: 'Auth Step',
 };
+
+function ComponentPreview({
+  componentCode,
+  state,
+  previewWidth,
+  platform,
+}: {
+  componentCode: string;
+  state: Record<string, unknown>;
+  previewWidth: number;
+  platform: 'mobile' | 'web';
+}) {
+  const srcdoc = buildSrcdoc(componentCode, state);
+  const phoneHeight = Math.round(previewWidth * 1.875);
+
+  if (platform === 'web') {
+    return (
+      <div className="w-full rounded-xl overflow-hidden border border-zinc-800" style={{ height: 320 }}>
+        <iframe
+          key={componentCode.slice(0, 40)}
+          srcDoc={srcdoc}
+          className="w-full h-full border-0 bg-white"
+          sandbox="allow-scripts"
+          title="Screen Preview"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="bg-zinc-900 rounded-[32px] border-[3px] border-zinc-700 shadow-xl overflow-hidden mx-auto"
+      style={{ width: previewWidth }}
+    >
+      <div className="h-6 bg-zinc-900 flex items-center justify-center">
+        <div className="w-14 h-3 bg-zinc-800 rounded-b-lg" />
+      </div>
+      <div className="bg-white overflow-hidden relative" style={{ height: phoneHeight }}>
+        <iframe
+          key={componentCode.slice(0, 40)}
+          srcDoc={srcdoc}
+          className="border-0"
+          sandbox="allow-scripts"
+          title="Screen Preview"
+          style={{
+            width: '122%',
+            height: '122%',
+            transform: 'scale(0.82)',
+            transformOrigin: 'top left',
+          }}
+        />
+      </div>
+      <div className="h-5 bg-zinc-900 flex items-center justify-center">
+        <div className="w-16 h-1 bg-zinc-600 rounded-full" />
+      </div>
+    </div>
+  );
+}
 
 export default function MomentPanel({ moment }: { moment: Moment }) {
   const [editText, setEditText] = useState('');
@@ -160,7 +219,25 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
       <div className="shrink-0 p-4 border-b border-zinc-900 bg-zinc-950">
         <p className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider mb-3">Screen Preview</p>
 
-        {moment.screenSpec && appMap ? (
+        {moment.componentCode ? (
+          // Generated React component — iframe sandbox preview
+          <div className="relative flex justify-center">
+            <ComponentPreview
+              key={`${moment.id}-${mockVersion}`}
+              componentCode={moment.componentCode}
+              state={(appMap?.initialState as Record<string, unknown>) ?? {}}
+              previewWidth={previewWidth}
+              platform={appMap?.appPlatform ?? 'mobile'}
+            />
+            {isEditing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-[20px]"
+                style={{ background: 'rgba(9,9,11,0.72)', backdropFilter: 'blur(4px)' }}>
+                <div className="w-6 h-6 rounded-full border-2 border-zinc-600 border-t-indigo-400 animate-spin" />
+                <p className="text-zinc-300 text-xs font-medium">Regenerating…</p>
+              </div>
+            )}
+          </div>
+        ) : moment.screenSpec && appMap ? (
           <div className="relative flex justify-center">
             <MobileRuntime
               appMap={appMap}
@@ -177,7 +254,6 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
             )}
           </div>
         ) : moment.mockHtml ? (
-          // Pre-baked or previously generated — render instantly
           <div className="relative">
             <MockFrame key={`${moment.id}-${mockVersion}`} html={moment.mockHtml} width={previewWidth} mode={appMap?.appPlatform ?? 'mobile'} />
             {isEditing && (
@@ -189,7 +265,6 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
             )}
           </div>
         ) : journey ? (
-          // Not yet generated — stream it in, cache on complete
           <StreamingMockFrame
             key={moment.id}
             fetchKey={`${moment.id}:${moment.preview ?? ''}`}
