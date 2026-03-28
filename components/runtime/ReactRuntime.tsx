@@ -213,7 +213,7 @@ export default function ReactRuntime({
               </div>
               <div
                 className="bg-white overflow-hidden relative"
-                style={{ height: Math.round(phoneWidth * 1.875) }}
+                style={{ height: Math.round(844 * (phoneWidth / 390)) }}
               >
                 {isBuilding || !srcdoc ? (
                   <div className="w-full h-full flex items-center justify-center bg-zinc-950">
@@ -229,14 +229,14 @@ export default function ReactRuntime({
                     ref={iframeRef}
                     key={currentMomentId}
                     srcDoc={srcdoc}
-                    className="w-full h-full border-0"
+                    className="border-0 bg-white"
                     sandbox="allow-scripts"
                     title="App Runtime"
                     style={{
-                      transform: 'scale(0.82)',
+                      width: 390,
+                      height: 844,
+                      transform: `scale(${phoneWidth / 390})`,
                       transformOrigin: 'top left',
-                      width: '122%',
-                      height: '122%',
                     }}
                   />
                 )}

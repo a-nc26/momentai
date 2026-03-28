@@ -16,6 +16,9 @@ const TYPE_LABELS: Record<string, string> = {
   ui: 'UI Screen', ai: 'AI-Powered', data: 'Data Layer', auth: 'Auth Step',
 };
 
+const PHONE_WIDTH = 390;
+const PHONE_HEIGHT = 844;
+
 function ComponentPreview({
   componentCode,
   state,
@@ -28,7 +31,6 @@ function ComponentPreview({
   platform: 'mobile' | 'web';
 }) {
   const srcdoc = buildSrcdoc(componentCode, state);
-  const phoneHeight = Math.round(previewWidth * 1.875);
 
   if (platform === 'web') {
     return (
@@ -44,6 +46,9 @@ function ComponentPreview({
     );
   }
 
+  const scale = previewWidth / PHONE_WIDTH;
+  const visibleHeight = Math.round(PHONE_HEIGHT * scale);
+
   return (
     <div
       className="bg-zinc-900 rounded-[28px] border-[2px] border-zinc-700 shadow-xl overflow-hidden mx-auto"
@@ -52,17 +57,17 @@ function ComponentPreview({
       <div className="h-5 bg-zinc-900 flex items-center justify-center">
         <div className="w-12 h-2.5 bg-zinc-800 rounded-b-lg" />
       </div>
-      <div className="bg-white overflow-hidden relative" style={{ height: phoneHeight }}>
+      <div className="bg-white overflow-hidden relative" style={{ height: visibleHeight }}>
         <iframe
           key={componentCode.slice(0, 40)}
           srcDoc={srcdoc}
-          className="border-0"
+          className="border-0 bg-white"
           sandbox="allow-scripts"
           title="Screen Preview"
           style={{
-            width: '122%',
-            height: '122%',
-            transform: 'scale(0.82)',
+            width: PHONE_WIDTH,
+            height: PHONE_HEIGHT,
+            transform: `scale(${scale})`,
             transformOrigin: 'top left',
           }}
         />
