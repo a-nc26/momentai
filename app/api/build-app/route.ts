@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { AppMap, Moment } from '@/lib/types';
+import { transpileComponent } from '@/lib/transpile';
 
 const client = new Anthropic();
 
@@ -189,6 +190,13 @@ export async function POST(req: NextRequest) {
             if (FORBIDDEN_PATTERNS.test(code)) {
               console.log(`[build-app] Retrying ${moment.id} — forbidden pattern detected`);
               code = await generateScreenComponent(moment, appMap);
+            }
+
+            // Pre-transpile JSX → plain JS so the preview iframe never needs Babel
+            try {
+              code = transpileComponent(code);
+            } catch (transpileErr) {
+              console.warn(`[build-app] Transpile failed for ${moment.id}, sending raw JSX:`, transpileErr);
             }
 
             const event = `data: ${JSON.stringify({

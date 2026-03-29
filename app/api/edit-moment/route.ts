@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { AppMap, Journey, Moment } from '@/lib/types';
+import { transpileComponent } from '@/lib/transpile';
 
 const client = new Anthropic();
 
@@ -88,6 +89,12 @@ Apply ONLY this change. Keep everything else intact. Generate the complete updat
       .replace(/^```(?:javascript|jsx|js|tsx)?\n?/i, '')
       .replace(/\n?```$/, '')
       .trim();
+
+    try {
+      code = transpileComponent(code);
+    } catch (transpileErr) {
+      console.warn('[edit-moment] Transpile failed, sending raw JSX:', transpileErr);
+    }
 
     return NextResponse.json({ componentCode: code });
   } catch (err) {

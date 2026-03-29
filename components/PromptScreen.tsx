@@ -44,7 +44,17 @@ const MOMENT_TYPE_COLORS: Record<string, string> = {
 };
 
 export default function PromptScreen() {
-  const { setAppMap, setGenerating, isGenerating, setActiveProjectId, setBuiltAppUrl, setBuiltHtml, setBuildingApp } = useMomentaiStore();
+  const {
+    setAppMap,
+    setGenerating,
+    isGenerating,
+    setActiveProjectId,
+    setBuiltAppUrl,
+    setBuiltHtml,
+    setBuildingApp,
+    setMomentComponentCode,
+    setMomentBuildStatus,
+  } = useMomentaiStore();
   const [activeTab, setActiveTab] = useState<'describe' | 'upload'>('describe');
   const [platform, setPlatform] = useState<'mobile' | 'web'>('mobile');
   const [text, setText] = useState('');
@@ -62,20 +72,46 @@ export default function PromptScreen() {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
+  /** Same pipeline as Build & Share: `/api/build-app` streams SSE, not JSON. */
   const triggerBuild = async (appMap: AppMap) => {
+    const screens = appMap.moments.filter((m) => !m.parentMomentId);
     setBuildingApp(true);
+    for (const m of screens) {
+      setMomentBuildStatus(m.id, 'building');
+    }
     try {
       const res = await fetch('/api/build-app', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appMap }),
       });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.url) setBuiltAppUrl(data.url);
-      if (data.html) setBuiltHtml(data.html);
+      if (!res.ok || !res.body) return;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const payload = JSON.parse(line.slice(6));
+            if (payload.status === 'done' && payload.componentCode && payload.momentId) {
+              setMomentComponentCode(payload.momentId, payload.componentCode);
+            } else if (payload.status === 'error' && payload.momentId) {
+              setMomentBuildStatus(payload.momentId, 'error');
+            }
+          } catch {
+            /* skip malformed line */
+          }
+        }
+      }
     } catch {
-      // silently fail — user can rebuild manually
+      /* user can run Build & Share from the workspace */
     } finally {
       setBuildingApp(false);
     }

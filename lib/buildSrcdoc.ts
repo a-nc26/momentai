@@ -1,19 +1,9 @@
-export function buildSrcdoc(componentCode: string, state: Record<string, unknown>): string {
-  const escapedCode = componentCode
-    .replace(/\\/g, '\\\\')
-    .replace(/`/g, '\\`')
-    .replace(/\$/g, '\\$');
+/** True if code looks like it's already plain JS (no JSX angle-bracket tags). */
+function isPreTranspiled(code: string): boolean {
+  return !/<[A-Za-z][\w.]*[\s/>]/.test(code);
+}
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<script src="https://cdn.tailwindcss.com"><\/script>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>
-<style>
+const SHARED_STYLES = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff; overflow-x: hidden; }
   .ui-btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 0.5rem; font-weight: 500; transition: all 150ms; cursor: pointer; border: none; font-size: 0.875rem; line-height: 1.25rem; }
@@ -44,11 +34,9 @@ export function buildSrcdoc(componentCode: string, state: Record<string, unknown
   .ui-select { width: 100%; border-radius: 0.5rem; border: 1px solid #e4e4e7; padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none; background: #fff; cursor: pointer; appearance: none; }
   .ui-select:focus { border-color: #6366f1; }
   .err-box { padding: 24px; font-family: monospace; font-size: 12px; color: #ef4444; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; margin: 16px; white-space: pre-wrap; word-break: break-all; }
-</style>
-</head>
-<body>
-<div id="root"></div>
-<script>
+`;
+
+const SHARED_UI_SCRIPT = `
 (function() {
   var h = React.createElement;
 
@@ -174,29 +162,174 @@ export function buildSrcdoc(componentCode: string, state: Record<string, unknown
   window.useMemo = React.useMemo;
   window.useRef = React.useRef;
 })();
+`;
+
+/**
+ * Persistent iframe shell that loads React/ReactDOM/Tailwind ONCE and accepts
+ * component code via postMessage — eliminates per-screen CDN reload delays.
+ */
+export function buildShellSrcdoc(): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"><\/script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>
+<style>${SHARED_STYLES}</style>
+</head>
+<body>
+<div id="root"></div>
+<script>${SHARED_UI_SCRIPT}<\/script>
+<script>
+(function() {
+  var root = document.getElementById('root');
+  var reactRoot = ReactDOM.createRoot(root);
+
+  function notifyParent(type, extra) {
+    try {
+      window.parent.postMessage(Object.assign({ type: type }, extra || {}), '*');
+    } catch (e) {}
+  }
+
+  function showError(msg) {
+    root.innerHTML = '<div class="err-box">' + msg + '<\\/div>';
+    notifyParent('iframePreviewError', { message: String(msg).slice(0, 500) });
+  }
+
+  function loadComponent(code, initialState) {
+    delete window.__SCREEN_COMPONENT__;
+
+    try {
+      new Function(code)();
+    } catch (e) {
+      showError('Component init error:\\n' + (e.message || e));
+      return;
+    }
+
+    var Comp = window.__SCREEN_COMPONENT__;
+    if (!Comp) {
+      showError('Component did not register. Make sure the code sets window.__SCREEN_COMPONENT__.');
+      return;
+    }
+
+    function RuntimeBridge() {
+      var _state = React.useState(initialState);
+      var appState = _state[0];
+      var setAppState = _state[1];
+
+      React.useEffect(function() {
+        function handler(e) {
+          if (!e.data) return;
+          if (e.data.type === 'updateState') {
+            setAppState(function(prev) { return Object.assign({}, prev, e.data.state); });
+          }
+        }
+        window.addEventListener('message', handler);
+        return function() { window.removeEventListener('message', handler); };
+      }, []);
+
+      function onNavigate(momentId) {
+        window.parent.postMessage({ type: 'navigate', momentId: momentId }, '*');
+      }
+
+      function onStateChange(key, value) {
+        setAppState(function(prev) {
+          var next = Object.assign({}, prev);
+          next[key] = value;
+          return next;
+        });
+        window.parent.postMessage({ type: 'stateChange', key: key, value: value }, '*');
+      }
+
+      try {
+        return React.createElement(Comp, { state: appState, onNavigate: onNavigate, onStateChange: onStateChange });
+      } catch(e) {
+        return React.createElement('div', { className: 'err-box' }, 'Render error: ' + (e.message || e));
+      }
+    }
+
+    try {
+      reactRoot.render(React.createElement(RuntimeBridge));
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          notifyParent('iframeReady');
+        });
+      });
+    } catch (e) {
+      showError('React render error:\\n' + (e.message || e));
+    }
+  }
+
+  window.addEventListener('message', function(e) {
+    if (!e.data) return;
+    if (e.data.type === 'loadComponent') {
+      loadComponent(e.data.code, e.data.state || {});
+    }
+  });
+
+  notifyParent('shellReady');
+})();
 <\/script>
+</body>
+</html>`;
+}
+
+export function buildSrcdoc(componentCode: string, state: Record<string, unknown>): string {
+  const needsBabel = !isPreTranspiled(componentCode);
+
+  const escapedCode = componentCode
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$/g, '\\$');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"><\/script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>
+${needsBabel ? '<script src="https://unpkg.com/@babel/standalone/babel.min.js"><\\/script>' : ''}
+<style>${SHARED_STYLES}</style>
+</head>
+<body>
+<div id="root"></div>
+<script>${SHARED_UI_SCRIPT}<\/script>
 <script>
 (function() {
   var root = document.getElementById('root');
   var initialState = ${JSON.stringify(state)};
 
-  function showError(msg) {
-    root.innerHTML = '<div class="err-box">' + msg + '<\\/div>';
+  function notifyParent(type, extra) {
+    try {
+      window.parent.postMessage(Object.assign({ type: type }, extra || {}), '*');
+    } catch (e) {}
   }
 
-  if (typeof Babel === 'undefined') {
-    showError('Babel failed to load. Check your internet connection and refresh.');
-    return;
+  function showError(msg) {
+    root.innerHTML = '<div class="err-box">' + msg + '<\\/div>';
+    notifyParent('iframePreviewError', { message: String(msg).slice(0, 500) });
   }
 
   var componentCode = \`${escapedCode}\`;
   var transpiled;
+  ${needsBabel ? `
+  if (typeof Babel === 'undefined') {
+    showError('Babel failed to load. Check your internet connection and refresh.');
+    return;
+  }
   try {
     transpiled = Babel.transform(componentCode, { presets: ['react'] }).code;
   } catch (e) {
     showError('Babel transpile error:\\n' + (e.message || e));
     return;
   }
+  ` : `
+  transpiled = componentCode;
+  `}
 
   try {
     new Function(transpiled)();
@@ -249,6 +382,11 @@ export function buildSrcdoc(componentCode: string, state: Record<string, unknown
 
   try {
     ReactDOM.createRoot(root).render(React.createElement(RuntimeBridge));
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        notifyParent('iframeReady');
+      });
+    });
   } catch (e) {
     showError('React render error:\\n' + (e.message || e));
   }

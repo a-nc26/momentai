@@ -21,6 +21,7 @@ import MomentNode from './MomentNode';
 import JourneyGroupNode from './JourneyGroupNode';
 import { JOURNEY_COLORS } from '@/lib/colors';
 import { AppMap } from '@/lib/types';
+import { createCanvasPositionResolver, MOMENT_NODE_H, MOMENT_NODE_W } from '@/lib/canvasLayout';
 
 const nodeTypes = {
   momentNode: MomentNode,
@@ -33,20 +34,24 @@ const JOURNEY_HEADER_HEIGHT = 48;
 // Zoom threshold below which we collapse into bird's eye (journey-only) mode
 const BIRDS_EYE_ZOOM = 0.38;
 
-function buildJourneyBounds(appMap: AppMap) {
+function buildJourneyBounds(appMap: AppMap, expandedBranchParentId: string | null) {
+  const resolve = createCanvasPositionResolver(appMap, expandedBranchParentId);
   const bounds: Record<string, { minX: number; minY: number; maxX: number; maxY: number; count: number }> = {};
 
   for (const moment of appMap.moments) {
     if (moment.parentMomentId) continue;
+    if (moment.branchOf && expandedBranchParentId !== moment.branchOf) continue;
+
     const jid = moment.journeyId;
     if (!bounds[jid]) {
       bounds[jid] = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, count: 0 };
     }
     const b = bounds[jid];
-    b.minX = Math.min(b.minX, moment.position.x);
-    b.minY = Math.min(b.minY, moment.position.y);
-    b.maxX = Math.max(b.maxX, moment.position.x + 220);
-    b.maxY = Math.max(b.maxY, moment.position.y + 120);
+    const p = resolve(moment);
+    b.minX = Math.min(b.minX, p.x);
+    b.minY = Math.min(b.minY, p.y);
+    b.maxX = Math.max(b.maxX, p.x + MOMENT_NODE_W);
+    b.maxY = Math.max(b.maxY, p.y + MOMENT_NODE_H);
     b.count++;
   }
   return bounds;
@@ -57,8 +62,10 @@ function buildNodes(
   flaggedMoments: Record<string, string>,
   activeMomentId: string | null,
   birdsEye: boolean,
+  expandedBranchParentId: string | null,
 ): Node[] {
-  const bounds = buildJourneyBounds(appMap);
+  const bounds = buildJourneyBounds(appMap, expandedBranchParentId);
+  const resolvePosition = createCanvasPositionResolver(appMap, expandedBranchParentId);
   const nodes: Node[] = [];
 
   for (let i = 0; i < appMap.journeys.length; i++) {
@@ -103,7 +110,7 @@ function buildNodes(
     nodes.push({
       id: moment.id,
       type: 'momentNode',
-      position: moment.position,
+      position: resolvePosition(moment),
       data: {
         moment,
         color,
@@ -186,14 +193,17 @@ function CanvasContent() {
     if (!appMap) return;
     setNodes((prev) => {
       const posMap = Object.fromEntries(prev.map((n) => [n.id, n.position]));
-      return buildNodes(appMap, flaggedMoments, activeMomentId, birdsEye).map((n) => ({
-        ...n,
-        position: posMap[n.id] ?? n.position,
-        selected: n.id === selectedMomentId,
-      }));
+      return buildNodes(appMap, flaggedMoments, activeMomentId, birdsEye, expandedId).map((n) => {
+        const branchOf = (n.data as { moment?: { branchOf?: string } })?.moment?.branchOf;
+        return {
+          ...n,
+          position: branchOf ? n.position : posMap[n.id] ?? n.position,
+          selected: n.id === selectedMomentId,
+        };
+      });
     });
     setEdges(buildEdges(appMap, birdsEye));
-  }, [appMap, flaggedMoments, activeMomentId, birdsEye]);
+  }, [appMap, flaggedMoments, activeMomentId, birdsEye, expandedId]);
 
   useEffect(() => {
     setNodes((nds) =>

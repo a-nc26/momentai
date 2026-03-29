@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@babel/core": "^7.29.0",
+    "@babel/preset-react": "^7.28.5",
     "@supabase/supabase-js": "^2.100.1",
     "@types/adm-zip": "^0.5.8",
     "@vercel/analytics": "^2.0.1",
@@ -28,6 +30,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/babel__core": "^7.20.5",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

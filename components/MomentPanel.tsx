@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useMomentaiStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Moment } from '@/lib/types';
 import { JOURNEY_COLORS } from '@/lib/colors';
-import { buildSrcdoc } from '@/lib/buildSrcdoc';
+import { buildShellSrcdoc } from '@/lib/buildSrcdoc';
 import MockFrame from './MockFrame';
 import StreamingMockFrame from './StreamingMockFrame';
 import MobileRuntime from './runtime/MobileRuntime';
@@ -42,6 +42,8 @@ function PreviewSkeleton({ scale }: { scale: number }) {
   );
 }
 
+const SHELL_READY_TIMEOUT_MS = 15_000;
+
 function ComponentPreview({
   componentCode,
   state,
@@ -54,23 +56,61 @@ function ComponentPreview({
   platform: 'mobile' | 'web';
 }) {
   const [ready, setReady] = useState(false);
-  const srcdoc = buildSrcdoc(componentCode, state);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const shellReadyRef = useRef(false);
+  const codeRef = useRef(componentCode);
+  const stateRef = useRef(state);
+
+  codeRef.current = componentCode;
+  stateRef.current = state;
+
+  const shellSrcdoc = useMemo(() => buildShellSrcdoc(), []);
+
+  const sendComponent = useCallback(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: 'loadComponent', code: codeRef.current, state: stateRef.current }, '*');
+  }, []);
+
+  useEffect(() => {
+    function handler(e: MessageEvent) {
+      if (!e.data) return;
+      const win = iframeRef.current?.contentWindow;
+      if (win && e.source !== win) return;
+
+      if (e.data.type === 'shellReady') {
+        shellReadyRef.current = true;
+        sendComponent();
+      }
+      if (e.data.type === 'iframeReady' || e.data.type === 'iframePreviewError') {
+        setReady(true);
+      }
+    }
+
+    const fallback = window.setTimeout(() => {
+      if (!shellReadyRef.current) setReady(true);
+    }, SHELL_READY_TIMEOUT_MS);
+
+    window.addEventListener('message', handler);
+    return () => {
+      window.clearTimeout(fallback);
+      window.removeEventListener('message', handler);
+    };
+  }, [sendComponent]);
 
   useEffect(() => {
     setReady(false);
-    function handler(e: MessageEvent) {
-      if (e.data?.type === 'iframeReady') setReady(true);
+    if (shellReadyRef.current) {
+      sendComponent();
     }
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [componentCode]);
+  }, [componentCode, sendComponent]);
 
   if (platform === 'web') {
     return (
       <div className="w-full rounded-xl overflow-hidden border border-zinc-800 relative" style={{ height: 260 }}>
         <iframe
-          key={componentCode.slice(0, 40)}
-          srcDoc={srcdoc}
+          ref={iframeRef}
+          srcDoc={shellSrcdoc}
           className="w-full h-full border-0 bg-white"
           sandbox="allow-scripts"
           title="Screen Preview"
@@ -93,8 +133,8 @@ function ComponentPreview({
       </div>
       <div className="bg-white overflow-hidden relative" style={{ height: visibleHeight }}>
         <iframe
-          key={componentCode.slice(0, 40)}
-          srcDoc={srcdoc}
+          ref={iframeRef}
+          srcDoc={shellSrcdoc}
           className="border-0 bg-white"
           sandbox="allow-scripts"
           title="Screen Preview"
@@ -116,7 +156,6 @@ function ComponentPreview({
 
 export default function MomentPanel({ moment }: { moment: Moment }) {
   const [editText, setEditText] = useState('');
-  const [mockVersion, setMockVersion] = useState(0);
   const [previewWidth, setPreviewWidth] = useState(200);
 
   const [promptTemplateText, setPromptTemplateText] = useState(moment.promptTemplate ?? '');
@@ -177,7 +216,6 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
       if (result.componentCode) {
         setMomentComponentCode(moment.id, result.componentCode);
       }
-      setMockVersion((v) => v + 1);
     } catch (err) {
       console.error(err);
     } finally {
@@ -210,7 +248,6 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
             const payload = JSON.parse(line.slice(6));
             if (payload.componentCode) {
               setMomentComponentCode(moment.id, payload.componentCode);
-              setMockVersion((v) => v + 1);
             }
           } catch { /* skip */ }
         }
@@ -282,7 +319,6 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
           <div className="relative flex justify-center">
             {moment.componentCode ? (
               <ComponentPreview
-                key={`${moment.id}-${mockVersion}`}
                 componentCode={moment.componentCode}
                 state={(appMap?.initialState as Record<string, unknown>) ?? {}}
                 previewWidth={previewWidth}
@@ -296,7 +332,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
                 onMomentChange={(id) => { if (id) selectMoment(id); }}
               />
             ) : moment.mockHtml ? (
-              <MockFrame key={`${moment.id}-${mockVersion}`} html={moment.mockHtml} width={previewWidth} mode={appMap?.appPlatform ?? 'mobile'} />
+              <MockFrame key={moment.id} html={moment.mockHtml} width={previewWidth} mode={appMap?.appPlatform ?? 'mobile'} />
             ) : journey ? (
               <StreamingMockFrame
                 key={moment.id}
