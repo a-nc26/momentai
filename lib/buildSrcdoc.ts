@@ -177,6 +177,7 @@ export function buildShellSrcdoc(): string {
 <script src="https://cdn.tailwindcss.com"><\/script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>
 <style>${SHARED_STYLES}</style>
 </head>
 <body>
@@ -198,11 +199,29 @@ export function buildShellSrcdoc(): string {
     notifyParent('iframePreviewError', { message: String(msg).slice(0, 500) });
   }
 
+  function isPreTranspiled(code) {
+    return !/<[A-Za-z][\\w.]*[\\s\\/>]/.test(code);
+  }
+
   function loadComponent(code, initialState) {
     delete window.__SCREEN_COMPONENT__;
 
+    var transpiled = code;
+    if (!isPreTranspiled(code)) {
+      if (typeof Babel === 'undefined') {
+        showError('Babel failed to load. Check your internet connection and refresh.');
+        return;
+      }
+      try {
+        transpiled = Babel.transform(code, { presets: ['react'] }).code;
+      } catch (e) {
+        showError('Babel transpile error:\\n' + (e.message || e));
+        return;
+      }
+    }
+
     try {
-      new Function(code)();
+      new Function(transpiled)();
     } catch (e) {
       showError('Component init error:\\n' + (e.message || e));
       return;
