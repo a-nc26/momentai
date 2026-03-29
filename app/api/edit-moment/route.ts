@@ -9,6 +9,13 @@ const EDIT_SYSTEM_PROMPT = `You are editing a single screen component for a mobi
 
 Stack: React + Tailwind CSS + shadcn-style UI components available on window.UI.
 
+═══ JSX SYNTAX — CRITICAL ═══
+- ALWAYS wrap JSX expressions in parentheses: return ( <div>...</div> );
+- NEVER have dangling braces or unclosed tags
+- Array.map() MUST have complete arrow function: items.map((item, i) => ( <div key={i}>...</div> ))
+- Ternary in JSX MUST be wrapped: { condition ? ( <Component /> ) : ( <Other /> ) }
+- Multi-line JSX MUST use parentheses: const el = ( <div>...</div> );
+
 RULES:
 - NEVER use placeholder text. All content must be realistic and specific.
 - Every navigation button MUST call onNavigate('exact-moment-id') using the IDs from the prompt.
@@ -93,7 +100,31 @@ Apply ONLY this change. Keep everything else intact. Generate the complete updat
     try {
       code = transpileComponent(code);
     } catch (transpileErr) {
-      console.warn('[edit-moment] Transpile failed, sending raw JSX:', transpileErr);
+      console.error('[edit-moment] Transpile failed, retrying generation:', transpileErr);
+      console.error('[edit-moment] Original code:', code.slice(0, 500));
+      
+      // Retry once
+      const retryMessage = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system: EDIT_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userPrompt }],
+      });
+      
+      code = (retryMessage.content[0] as { type: string; text: string }).text.trim();
+      code = code
+        .replace(/^```(?:javascript|jsx|js|tsx)?\n?/i, '')
+        .replace(/\n?```$/, '')
+        .trim();
+      
+      try {
+        code = transpileComponent(code);
+      } catch (secondErr) {
+        return NextResponse.json(
+          { error: `Failed to generate valid JSX: ${secondErr instanceof Error ? secondErr.message : 'Invalid syntax'}` },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json({ componentCode: code });

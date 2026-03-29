@@ -22,6 +22,13 @@ window.__SCREEN_COMPONENT__ = function ScreenComponent({ state, onNavigate, onSt
   // component body
 };
 
+═══ JSX SYNTAX — CRITICAL ═══
+- ALWAYS wrap JSX expressions in parentheses: return ( <div>...</div> );
+- NEVER have dangling braces or unclosed tags
+- Array.map() MUST have complete arrow function: items.map((item, i) => ( <div key={i}>...</div> ))
+- Ternary in JSX MUST be wrapped: { condition ? ( <Component /> ) : ( <Other /> ) }
+- Multi-line JSX MUST use parentheses: const el = ( <div>...</div> );
+
 ═══ NAVIGATION — THIS IS CRITICAL ═══
 - Every navigation button MUST call onNavigate('exact-moment-id') using the EXACT moment IDs provided in the user prompt under "NAVIGATION TARGETS".
 - Do NOT invent moment IDs. Only use the IDs listed in the prompt.
@@ -193,15 +200,25 @@ export async function POST(req: NextRequest) {
             }
 
             // Pre-transpile JSX → plain JS so the preview iframe never needs Babel
+            let transpiled: string;
             try {
-              code = transpileComponent(code);
+              transpiled = transpileComponent(code);
             } catch (transpileErr) {
-              console.warn(`[build-app] Transpile failed for ${moment.id}, sending raw JSX:`, transpileErr);
+              console.error(`[build-app] Transpile failed for ${moment.id}, retrying generation:`, transpileErr);
+              console.error(`[build-app] Original code:\n${code.slice(0, 500)}`);
+              // Retry generation once if transpilation fails
+              code = await generateScreenComponent(moment, appMap);
+              try {
+                transpiled = transpileComponent(code);
+              } catch (secondErr) {
+                console.error(`[build-app] Second transpile failed for ${moment.id}:`, secondErr);
+                throw new Error(`Failed to generate valid JSX after retry: ${secondErr instanceof Error ? secondErr.message : 'Invalid syntax'}`);
+              }
             }
 
             const event = `data: ${JSON.stringify({
               momentId: moment.id,
-              componentCode: code,
+              componentCode: transpiled,
               status: 'done',
             })}\n\n`;
             controller.enqueue(encoder.encode(event));
