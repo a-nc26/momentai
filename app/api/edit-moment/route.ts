@@ -39,10 +39,10 @@ export async function POST(req: NextRequest) {
       appMap,
     }: { moment: Moment; change: string; journey: Journey; appMap: AppMap } = await req.json();
 
-    const outgoingEdges = appMap.edges.filter((e) => e.source === moment.id);
+    const outgoingEdgesForNav = appMap.edges.filter((e) => e.source === moment.id);
     const incomingEdges = appMap.edges.filter((e) => e.target === moment.id);
 
-    const navTargets = outgoingEdges.map((e) => {
+    const navTargets = outgoingEdgesForNav.map((e) => {
       const target = appMap.moments.find((m) => m.id === e.target);
       return `  Button "${e.label || 'Continue'}" → onNavigate('${e.target}')  // "${target?.label ?? e.target}"`;
     }).join('\n');
