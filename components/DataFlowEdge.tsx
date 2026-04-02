@@ -14,6 +14,7 @@ export default function DataFlowEdge({
   data,
   markerEnd,
   style,
+  selected,
 }: EdgeProps) {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -26,12 +27,31 @@ export default function DataFlowEdge({
 
   const zoomLevel = (data?.zoomLevel as number) ?? 3;
   const edgeData = data as FlowEdge | undefined;
-
   const showDataFlow = zoomLevel >= 4 && (edgeData?.dataFlow || edgeData?.condition);
+
+  const edgeColor = selected ? '#60a5fa' : '#52525b';
+  const edgeWidth = selected ? 2.5 : zoomLevel >= 3 ? 2 : 1.5;
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={{
+          ...style,
+          stroke: edgeColor,
+          strokeWidth: edgeWidth,
+          strokeOpacity: 0.8,
+        }}
+      />
+      
+      {/* Animated flow indicator */}
+      {zoomLevel >= 3 && (
+        <circle r="3" fill="#60a5fa" opacity="0.6">
+          <animateMotion dur="2s" repeatCount="indefinite" path={edgePath} />
+        </circle>
+      )}
       
       {showDataFlow && (
         <EdgeLabelRenderer>

@@ -41,297 +41,155 @@ export default function MomentNode({ data, selected }: NodeProps) {
   if (zoomLevel === 2) {
     return (
       <div
-        className="w-[140px] rounded-lg bg-zinc-900 shadow-lg transition-all duration-200 cursor-pointer select-none"
+        className="w-[120px] rounded-lg bg-zinc-900 shadow-lg transition-all duration-200 cursor-pointer select-none"
         style={{
           borderLeft: `2px solid ${flagged ? '#f59e0b' : color}`,
           outline: selected ? `2px solid ${color}` : '2px solid transparent',
           outlineOffset: '2px',
         }}
       >
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5"
-        />
-        <div className="p-2.5">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm shrink-0">{TYPE_ICONS[moment.type] ?? '◆'}</span>
-            <h3 className="text-white font-semibold text-xs leading-tight truncate flex-1">
-              {moment.label}
-            </h3>
+        <Handle type="target" position={Position.Left} className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5" />
+        <div className="p-2">
+          <div className="flex items-center gap-1">
+            <span className="text-xs shrink-0">{TYPE_ICONS[moment.type] ?? '◆'}</span>
+            <h3 className="text-white font-semibold text-[10px] leading-tight truncate flex-1">{moment.label}</h3>
             {flagged && <div className="w-1 h-1 rounded-full bg-amber-400 shrink-0" />}
           </div>
         </div>
-        <Handle
-          type="source"
-          position={Position.Right}
-          className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5"
-        />
+        <Handle type="source" position={Position.Right} className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5" />
       </div>
     );
   }
 
-  // Expanded mode for level 4
+  // Expanded mode for level 4 - MORE COMPACT
   if (zoomLevel === 4) {
-    const stateReads = moment.screenSpec?.components
-      ?.filter((c: any) => c.key)
-      .map((c: any) => c.key)
-      .slice(0, 3) ?? [];
-    
+    const stateReads = moment.screenSpec?.components?.filter((c: any) => c.key).map((c: any) => c.key).slice(0, 3) ?? [];
     const hasCode = !!moment.componentCode;
 
     return (
       <div
-        className="w-[280px] rounded-xl bg-zinc-900 shadow-2xl transition-all duration-200 cursor-pointer select-none"
+        className="w-[200px] rounded-lg bg-zinc-900 shadow-xl transition-all duration-150 cursor-pointer select-none"
         style={{
-          borderLeft: `3px solid ${flagged ? '#f59e0b' : color}`,
-          outline: flagged
-            ? '2px solid #f59e0b'
-            : selected
-            ? `2px solid ${color}`
-            : isActive
-            ? `2px solid ${color}`
-            : '2px solid transparent',
-          outlineOffset: '3px',
-          boxShadow: flagged
-            ? '0 0 0 4px rgba(245,158,11,0.2), 0 0 32px rgba(245,158,11,0.3)'
-            : selected
-            ? `0 0 0 4px ${color}55, 0 0 40px ${color}60, 0 0 80px ${color}25`
-            : isActive
-            ? `0 0 0 3px ${color}40, 0 0 24px ${color}30`
-            : undefined,
-          transform: selected ? 'scale(1.03)' : undefined,
+          borderLeft: `2px solid ${flagged ? '#f59e0b' : color}`,
+          outline: flagged ? '1px solid #f59e0b' : selected ? `1px solid ${color}` : isActive ? `1px solid ${color}` : '1px solid transparent',
+          outlineOffset: '1px',
+          transform: selected ? 'scale(1.01)' : undefined,
         }}
       >
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="!bg-zinc-600 !border-zinc-500 !w-2 !h-2"
-        />
+        <Handle type="target" position={Position.Left} className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5" />
 
-        <div className="p-4 space-y-3">
-          {/* Journey label + status */}
+        <div className="p-2.5 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: flagged ? '#f59e0b' : color }}>
-              {journeyName}
-            </span>
+            <span className="text-[8px] font-medium uppercase tracking-wider" style={{ color: flagged ? '#f59e0b' : color }}>{journeyName}</span>
             {buildStatus === 'building' ? (
-              <span className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-indigo-400 bg-indigo-400/10">
-                <span className="w-2.5 h-2.5 rounded-full border border-indigo-400/40 border-t-indigo-400 animate-spin" />
-                Building
-              </span>
+              <span className="w-2 h-2 rounded-full border border-indigo-400/40 border-t-indigo-400 animate-spin" />
             ) : buildStatus === 'done' ? (
-              <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-emerald-400 bg-emerald-400/10">
-                ✓ Built
-              </span>
+              <span className="text-[8px] text-emerald-400">✓</span>
             ) : buildStatus === 'error' ? (
-              <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-red-400 bg-red-400/10">
-                Error
-              </span>
+              <span className="text-[8px] text-red-400">!</span>
             ) : flagged ? (
-              <span
-                className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.12)' }}
-              >
-                Review
-              </span>
+              <span className="text-[8px] text-amber-400">!</span>
             ) : isActive ? (
-              <span
-                className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded animate-pulse"
-                style={{ color: '#fff', background: color }}
-              >
-                ● Active
-              </span>
-            ) : (
-              <Badge
-                variant="outline"
-                className="text-[10px] h-4 px-1.5 border-zinc-700 text-zinc-500 capitalize"
-              >
-                {TYPE_LABELS[moment.type] ?? moment.type}
-              </Badge>
-            )}
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: color }} />
+            ) : null}
           </div>
 
-          {/* Flag reason */}
           {flagged && flagReason && (
-            <div className="text-[10px] text-amber-500/80 leading-relaxed bg-amber-500/5 border border-amber-500/15 rounded-lg px-2 py-1.5">
+            <div className="text-[8px] text-amber-500/80 leading-snug bg-amber-500/5 border border-amber-500/10 rounded px-1.5 py-1 line-clamp-2">
               {flagReason}
             </div>
           )}
 
-          {/* Icon + Label */}
-          <div className="flex items-start gap-2">
-            <span className="text-lg mt-0.5 shrink-0">{TYPE_ICONS[moment.type] ?? '◆'}</span>
+          <div className="flex items-start gap-1">
+            <span className="text-xs mt-0.5 shrink-0">{TYPE_ICONS[moment.type] ?? '◆'}</span>
             <div className="flex-1 min-w-0">
-              <h3 className="text-white font-semibold text-sm leading-tight mb-1">
-                {moment.label}
-              </h3>
-              <p className="text-zinc-500 text-xs leading-relaxed line-clamp-3">
-                {moment.description}
-              </p>
+              <h3 className="text-white font-semibold text-[11px] leading-tight mb-0.5">{moment.label}</h3>
+              <p className="text-zinc-500 text-[9px] leading-snug line-clamp-2">{moment.description}</p>
             </div>
           </div>
 
-          {/* State indicators */}
           {stateReads.length > 0 && (
-            <div className="border-t border-zinc-800 pt-2">
-              <p className="text-[9px] uppercase tracking-wider text-zinc-600 mb-1.5">State Access</p>
-              <div className="flex flex-wrap gap-1">
+            <div className="border-t border-zinc-800 pt-1">
+              <div className="flex flex-wrap gap-0.5">
                 {stateReads.map((key) => (
-                  <span key={key} className="text-[9px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-mono">
-                    {key}
-                  </span>
+                  <span key={key} className="text-[7px] bg-blue-500/10 text-blue-400 border border-blue-500/15 px-1 py-0.5 rounded font-mono">{key}</span>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Build status */}
           {hasCode && (
-            <div className="border-t border-zinc-800 pt-2 flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <div className="w-1 h-1 rounded-full bg-emerald-500" />
-              <span className="text-[9px] text-zinc-500 uppercase tracking-wider">Component Built</span>
-            </div>
-          )}
-
-          {hasSubflow && (
-            <div className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-              {subflowCount} internal step{subflowCount === 1 ? '' : 's'}
-            </div>
-          )}
-          {(branchCount ?? 0) > 0 && (
-            <div className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-              <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-                <path d="M5 1v4M2 8l3-3 3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              {branchCount} branch{branchCount === 1 ? '' : 'es'} · click
+              <span className="text-[7px] text-zinc-500 uppercase tracking-wider">Built</span>
             </div>
           )}
         </div>
 
-        <Handle
-          type="source"
-          position={Position.Right}
-          className="!bg-zinc-600 !border-zinc-500 !w-2 !h-2"
-        />
+        <Handle type="source" position={Position.Right} className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5" />
       </div>
     );
   }
 
-  // Default mode (level 3)
+  // Level 3 - MORE COMPACT
   return (
     <div
-      className="w-[220px] rounded-xl bg-zinc-900 shadow-2xl transition-all duration-200 cursor-pointer select-none"
+      className="w-[160px] rounded-lg bg-zinc-900 shadow-xl transition-all duration-150 cursor-pointer select-none"
       style={{
-        borderLeft: `3px solid ${flagged ? '#f59e0b' : color}`,
-        outline: flagged
-          ? '2px solid #f59e0b'
-          : selected
-          ? `2px solid ${color}`
-          : isActive
-          ? `2px solid ${color}`
-          : '2px solid transparent',
-        outlineOffset: '3px',
-        boxShadow: flagged
-          ? '0 0 0 4px rgba(245,158,11,0.2), 0 0 32px rgba(245,158,11,0.3)'
-          : selected
-          ? `0 0 0 4px ${color}55, 0 0 40px ${color}60, 0 0 80px ${color}25`
-          : isActive
-          ? `0 0 0 3px ${color}40, 0 0 24px ${color}30`
-          : undefined,
-        transform: selected ? 'scale(1.03)' : undefined,
+        borderLeft: `2px solid ${flagged ? '#f59e0b' : color}`,
+        outline: flagged ? '1px solid #f59e0b' : selected ? `1px solid ${color}` : isActive ? `1px solid ${color}` : '1px solid transparent',
+        outlineOffset: '1px',
+        transform: selected ? 'scale(1.01)' : undefined,
       }}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!bg-zinc-600 !border-zinc-500 !w-2 !h-2"
-      />
+      <Handle type="target" position={Position.Left} className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5" />
 
-      <div className="p-4">
-        {/* Journey label + status */}
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: flagged ? '#f59e0b' : color }}>
-            {journeyName}
-          </span>
+      <div className="p-2.5">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[8px] font-medium uppercase tracking-wider" style={{ color: flagged ? '#f59e0b' : color }}>{journeyName}</span>
           {buildStatus === 'building' ? (
-            <span className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-indigo-400 bg-indigo-400/10">
-              <span className="w-2.5 h-2.5 rounded-full border border-indigo-400/40 border-t-indigo-400 animate-spin" />
-              Building
-            </span>
+            <span className="w-2 h-2 rounded-full border border-indigo-400/40 border-t-indigo-400 animate-spin" />
           ) : buildStatus === 'done' ? (
-            <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-emerald-400 bg-emerald-400/10">
-              ✓ Built
-            </span>
+            <span className="text-[8px] text-emerald-400">✓</span>
           ) : buildStatus === 'error' ? (
-            <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-red-400 bg-red-400/10">
-              Error
-            </span>
+            <span className="text-[8px] text-red-400">!</span>
           ) : flagged ? (
-            <span
-              className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
-              style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.12)' }}
-            >
-              Review
-            </span>
+            <span className="text-[8px] text-amber-400">!</span>
           ) : isActive ? (
-            <span
-              className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded animate-pulse"
-              style={{ color: '#fff', background: color }}
-            >
-              ● Active
-            </span>
-          ) : (
-            <Badge
-              variant="outline"
-              className="text-[10px] h-4 px-1.5 border-zinc-700 text-zinc-500 capitalize"
-            >
-              {TYPE_LABELS[moment.type] ?? moment.type}
-            </Badge>
-          )}
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: color }} />
+          ) : null}
         </div>
 
-        {/* Flag reason */}
         {flagged && flagReason && (
-          <div className="mb-2 text-[10px] text-amber-500/80 leading-relaxed line-clamp-2 bg-amber-500/5 border border-amber-500/15 rounded-lg px-2 py-1.5">
+          <div className="mb-1.5 text-[8px] text-amber-500/80 leading-snug line-clamp-2 bg-amber-500/5 border border-amber-500/10 rounded px-1.5 py-1">
             {flagReason}
           </div>
         )}
 
-        {/* Icon + Label */}
-        <div className="flex items-start gap-2">
-          <span className="text-base mt-0.5 shrink-0">{TYPE_ICONS[moment.type] ?? '◆'}</span>
+        <div className="flex items-start gap-1">
+          <span className="text-xs mt-0.5 shrink-0">{TYPE_ICONS[moment.type] ?? '◆'}</span>
           <div>
-            <h3 className="text-white font-semibold text-sm leading-tight mb-1">
-              {moment.label}
-            </h3>
-            <p className="text-zinc-500 text-xs leading-relaxed line-clamp-2">
-              {moment.description}
-            </p>
+            <h3 className="text-white font-semibold text-[11px] leading-tight mb-0.5">{moment.label}</h3>
+            <p className="text-zinc-500 text-[9px] leading-snug line-clamp-2">{moment.description}</p>
             {hasSubflow && (
-              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-                {subflowCount} internal step{subflowCount === 1 ? '' : 's'}
+              <div className="mt-1 inline-flex items-center gap-0.5 rounded-full border border-zinc-700 bg-zinc-950/80 px-1 py-0.5 text-[8px] uppercase tracking-wider text-zinc-400">
+                <span className="w-1 h-1 rounded-full" style={{ backgroundColor: color }} />
+                {subflowCount}
               </div>
             )}
             {(branchCount ?? 0) > 0 && (
-              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-                <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+              <div className="mt-1 inline-flex items-center gap-0.5 rounded-full border border-zinc-700 bg-zinc-950/80 px-1 py-0.5 text-[8px] uppercase tracking-wider text-zinc-400">
+                <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
                   <path d="M5 1v4M2 8l3-3 3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                {branchCount} branch{branchCount === 1 ? '' : 'es'} · click
+                {branchCount}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!bg-zinc-600 !border-zinc-500 !w-2 !h-2"
-      />
+      <Handle type="source" position={Position.Right" className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5" />
     </div>
   );
 }

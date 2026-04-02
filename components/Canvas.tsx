@@ -324,6 +324,10 @@ function CanvasContent() {
     fitView({ padding: 0.15, duration: 500 });
   }, [fitView]);
 
+  const setManualZoomLevel = useCallback((level: 1 | 2 | 3 | 4) => {
+    setZoomLevel(level);
+  }, []);
+
   return (
     <div className="w-full h-full">
       <ReactFlow
@@ -353,21 +357,46 @@ function CanvasContent() {
 
         {/* Zoom indicator + overview button */}
         <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-          {zoomLevel === 1 && (
-            <div className="text-[10px] text-zinc-500 bg-zinc-900/80 border border-zinc-800 px-2.5 py-1 rounded-md">
-              Overview — zoom in or double-click a journey to see screens
-            </div>
-          )}
-          {zoomLevel === 2 && (
-            <div className="text-[10px] text-zinc-500 bg-zinc-900/80 border border-zinc-800 px-2.5 py-1 rounded-md">
-              Journey Detail — zoom in for more details
-            </div>
-          )}
-          {zoomLevel === 4 && (
-            <div className="text-[10px] text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-md">
-              Maximum Detail — showing all data flow
-            </div>
-          )}
+          {/* View selector */}
+          <div className="flex items-center gap-1 bg-zinc-900/90 border border-zinc-700 rounded-lg p-0.5">
+            <button
+              onClick={() => setManualZoomLevel(1)}
+              className={`px-2 py-1 rounded text-[10px] font-medium uppercase tracking-wider transition-all ${
+                zoomLevel === 1 ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Overview"
+            >
+              Overview
+            </button>
+            <button
+              onClick={() => setManualZoomLevel(2)}
+              className={`px-2 py-1 rounded text-[10px] font-medium uppercase tracking-wider transition-all ${
+                zoomLevel === 2 ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Journey Detail"
+            >
+              Journey
+            </button>
+            <button
+              onClick={() => setManualZoomLevel(3)}
+              className={`px-2 py-1 rounded text-[10px] font-medium uppercase tracking-wider transition-all ${
+                zoomLevel === 3 ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Screen Detail"
+            >
+              Screens
+            </button>
+            <button
+              onClick={() => setManualZoomLevel(4)}
+              className={`px-2 py-1 rounded text-[10px] font-medium uppercase tracking-wider transition-all ${
+                zoomLevel === 4 ? 'bg-indigo-600 text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Data Flow"
+            >
+              Data Flow
+            </button>
+          </div>
+
           <button
             onClick={zoomToAll}
             title="Fit all"
