@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { toast } from 'sonner';
 import { useMomentaiStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -157,6 +158,8 @@ function ComponentPreview({
 export default function MomentPanel({ moment }: { moment: Moment }) {
   const [editText, setEditText] = useState('');
   const [previewWidth, setPreviewWidth] = useState(200);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [lastFailedEdit, setLastFailedEdit] = useState<string | null>(null);
 
   const [promptTemplateText, setPromptTemplateText] = useState(moment.promptTemplate ?? '');
   const [promptTemplateSaved, setPromptTemplateSaved] = useState(false);
@@ -165,10 +168,22 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
   useEffect(() => {
     setPromptTemplateText(moment.promptTemplate ?? '');
     setPromptTemplateSaved(false);
+    setEditError(null);
   }, [moment.id]);
 
-  const { appMap, selectMoment, updateMoment, setMomentComponentCode, setMomentMock, flaggedMoments, isEditing, setEditing, clearFlag } =
-    useMomentaiStore();
+  const { 
+    appMap, 
+    selectMoment, 
+    updateMoment, 
+    setMomentComponentCode, 
+    setMomentMock, 
+    flaggedMoments, 
+    isEditing, 
+    setEditing, 
+    clearFlag,
+    flagMoments,
+    batchUpdateMoments,
+  } = useMomentaiStore();
 
   const flagReason = flaggedMoments[moment.id];
   const journeyIndex = appMap?.journeys.findIndex((j) => j.id === moment.journeyId) ?? 0;
@@ -204,6 +219,7 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
   const handleApplyEdit = useCallback(async () => {
     if (!editText.trim() || isEditing || !appMap || !journey) return;
     setEditing(true);
+    setEditError(null);
     const changeText = editText;
     setEditText('');
     try {
@@ -213,15 +229,64 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
         body: JSON.stringify({ moment, change: changeText, journey, appMap }),
       });
       const result = await res.json();
+      
+      if (!res.ok) {
+        setEditError(result.error || 'Edit failed');
+        setLastFailedEdit(changeText);
+        toast.error(result.error || 'Edit failed', {
+          description: result.suggestion,
+        });
+        return;
+      }
+      
       if (result.componentCode) {
         setMomentComponentCode(moment.id, result.componentCode);
       }
+      
+      // Handle downstream propagation
+      if (result.affectedMoments && Object.keys(result.affectedMoments).length > 0) {
+        const affectedCount = Object.keys(result.affectedMoments).length;
+        flagMoments(result.affectedMoments);
+        
+        toast.success('Edit applied', {
+          description: `${affectedCount} downstream screen${affectedCount > 1 ? 's' : ''} flagged for review`,
+        });
+        
+        // Background: update affected moments
+        fetch('/api/propagate-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: Object.entries(result.affectedMoments).map(([id, reason]) => ({
+              moment: appMap.moments.find((m) => m.id === id)!,
+              reason,
+            })),
+            editChange: changeText,
+            editedMoment: moment,
+            journey,
+            appMap,
+          }),
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.updates) batchUpdateMoments(data.updates);
+          })
+          .catch((err) => console.error('Propagation failed:', err));
+      } else {
+        toast.success('Edit applied');
+      }
+      
+      setLastFailedEdit(null);
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Network error';
+      setEditError(errMsg);
+      setLastFailedEdit(changeText);
+      toast.error('Edit failed', { description: errMsg });
       console.error(err);
     } finally {
       setEditing(false);
     }
-  }, [editText, isEditing, appMap, journey, moment, setEditing, setMomentComponentCode]);
+  }, [editText, isEditing, appMap, journey, moment, setEditing, setMomentComponentCode, flagMoments, batchUpdateMoments]);
 
   const handleRegenerate = useCallback(async () => {
     if (isRegenerating || isEditing || !appMap) return;
@@ -403,12 +468,27 @@ export default function MomentPanel({ moment }: { moment: Moment }) {
             )}
           </button>
         </div>
+        
+        {editError && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 space-y-1.5">
+            <p className="text-red-400 text-xs font-medium">{editError}</p>
+            {lastFailedEdit && (
+              <button
+                onClick={() => { setEditText(lastFailedEdit); setEditError(null); setLastFailedEdit(null); }}
+                className="text-red-400/80 hover:text-red-300 text-[10px] underline"
+              >
+                Restore failed edit to try again
+              </button>
+            )}
+          </div>
+        )}
+        
         <div className="flex gap-2">
           <Textarea
             className="flex-1 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-600 resize-none text-xs min-h-[36px] max-h-[80px] focus-visible:ring-indigo-500/40 focus-visible:border-indigo-500/50"
             placeholder="Describe the change you want..."
             value={editText}
-            onChange={(e) => setEditText(e.target.value)}
+            onChange={(e) => { setEditText(e.target.value); setEditError(null); }}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleApplyEdit(); }}
             disabled={isEditing || isRegenerating}
           />

@@ -157,6 +157,11 @@ export interface FlowEdge {
   source: string;
   target: string;
   label?: string;
+  condition?: string;
+  dataFlow?: {
+    stateChanges?: string[];
+    apiCalls?: string[];
+  };
 }
 
 export interface AppMap {

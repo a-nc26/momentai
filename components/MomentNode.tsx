@@ -29,13 +29,197 @@ type MomentNodeData = {
   branchCount?: number;
   active?: boolean;
   buildStatus?: 'idle' | 'building' | 'done' | 'error';
+  zoomLevel?: 1 | 2 | 3 | 4;
 };
 
 export default function MomentNode({ data, selected }: NodeProps) {
-  const { moment, color, journeyName, flagged, flagReason, hasSubflow, subflowCount, branchCount, active, buildStatus } = data as MomentNodeData;
+  const { moment, color, journeyName, flagged, flagReason, hasSubflow, subflowCount, branchCount, active, buildStatus, zoomLevel = 3 } = data as MomentNodeData;
 
   const isActive = active && !selected;
 
+  // Compact mode for level 2
+  if (zoomLevel === 2) {
+    return (
+      <div
+        className="w-[140px] rounded-lg bg-zinc-900 shadow-lg transition-all duration-200 cursor-pointer select-none"
+        style={{
+          borderLeft: `2px solid ${flagged ? '#f59e0b' : color}`,
+          outline: selected ? `2px solid ${color}` : '2px solid transparent',
+          outlineOffset: '2px',
+        }}
+      >
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5"
+        />
+        <div className="p-2.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm shrink-0">{TYPE_ICONS[moment.type] ?? '◆'}</span>
+            <h3 className="text-white font-semibold text-xs leading-tight truncate flex-1">
+              {moment.label}
+            </h3>
+            {flagged && <div className="w-1 h-1 rounded-full bg-amber-400 shrink-0" />}
+          </div>
+        </div>
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!bg-zinc-600 !border-zinc-500 !w-1.5 !h-1.5"
+        />
+      </div>
+    );
+  }
+
+  // Expanded mode for level 4
+  if (zoomLevel === 4) {
+    const stateReads = moment.screenSpec?.components
+      ?.filter((c: any) => c.key)
+      .map((c: any) => c.key)
+      .slice(0, 3) ?? [];
+    
+    const hasCode = !!moment.componentCode;
+
+    return (
+      <div
+        className="w-[280px] rounded-xl bg-zinc-900 shadow-2xl transition-all duration-200 cursor-pointer select-none"
+        style={{
+          borderLeft: `3px solid ${flagged ? '#f59e0b' : color}`,
+          outline: flagged
+            ? '2px solid #f59e0b'
+            : selected
+            ? `2px solid ${color}`
+            : isActive
+            ? `2px solid ${color}`
+            : '2px solid transparent',
+          outlineOffset: '3px',
+          boxShadow: flagged
+            ? '0 0 0 4px rgba(245,158,11,0.2), 0 0 32px rgba(245,158,11,0.3)'
+            : selected
+            ? `0 0 0 4px ${color}55, 0 0 40px ${color}60, 0 0 80px ${color}25`
+            : isActive
+            ? `0 0 0 3px ${color}40, 0 0 24px ${color}30`
+            : undefined,
+          transform: selected ? 'scale(1.03)' : undefined,
+        }}
+      >
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!bg-zinc-600 !border-zinc-500 !w-2 !h-2"
+        />
+
+        <div className="p-4 space-y-3">
+          {/* Journey label + status */}
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: flagged ? '#f59e0b' : color }}>
+              {journeyName}
+            </span>
+            {buildStatus === 'building' ? (
+              <span className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-indigo-400 bg-indigo-400/10">
+                <span className="w-2.5 h-2.5 rounded-full border border-indigo-400/40 border-t-indigo-400 animate-spin" />
+                Building
+              </span>
+            ) : buildStatus === 'done' ? (
+              <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-emerald-400 bg-emerald-400/10">
+                ✓ Built
+              </span>
+            ) : buildStatus === 'error' ? (
+              <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-red-400 bg-red-400/10">
+                Error
+              </span>
+            ) : flagged ? (
+              <span
+                className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.12)' }}
+              >
+                Review
+              </span>
+            ) : isActive ? (
+              <span
+                className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded animate-pulse"
+                style={{ color: '#fff', background: color }}
+              >
+                ● Active
+              </span>
+            ) : (
+              <Badge
+                variant="outline"
+                className="text-[10px] h-4 px-1.5 border-zinc-700 text-zinc-500 capitalize"
+              >
+                {TYPE_LABELS[moment.type] ?? moment.type}
+              </Badge>
+            )}
+          </div>
+
+          {/* Flag reason */}
+          {flagged && flagReason && (
+            <div className="text-[10px] text-amber-500/80 leading-relaxed bg-amber-500/5 border border-amber-500/15 rounded-lg px-2 py-1.5">
+              {flagReason}
+            </div>
+          )}
+
+          {/* Icon + Label */}
+          <div className="flex items-start gap-2">
+            <span className="text-lg mt-0.5 shrink-0">{TYPE_ICONS[moment.type] ?? '◆'}</span>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-white font-semibold text-sm leading-tight mb-1">
+                {moment.label}
+              </h3>
+              <p className="text-zinc-500 text-xs leading-relaxed line-clamp-3">
+                {moment.description}
+              </p>
+            </div>
+          </div>
+
+          {/* State indicators */}
+          {stateReads.length > 0 && (
+            <div className="border-t border-zinc-800 pt-2">
+              <p className="text-[9px] uppercase tracking-wider text-zinc-600 mb-1.5">State Access</p>
+              <div className="flex flex-wrap gap-1">
+                {stateReads.map((key) => (
+                  <span key={key} className="text-[9px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-mono">
+                    {key}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Build status */}
+          {hasCode && (
+            <div className="border-t border-zinc-800 pt-2 flex items-center gap-1.5">
+              <div className="w-1 h-1 rounded-full bg-emerald-500" />
+              <span className="text-[9px] text-zinc-500 uppercase tracking-wider">Component Built</span>
+            </div>
+          )}
+
+          {hasSubflow && (
+            <div className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+              {subflowCount} internal step{subflowCount === 1 ? '' : 's'}
+            </div>
+          )}
+          {(branchCount ?? 0) > 0 && (
+            <div className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+              <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                <path d="M5 1v4M2 8l3-3 3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {branchCount} branch{branchCount === 1 ? '' : 'es'} · click
+            </div>
+          )}
+        </div>
+
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!bg-zinc-600 !border-zinc-500 !w-2 !h-2"
+        />
+      </div>
+    );
+  }
+
+  // Default mode (level 3)
   return (
     <div
       className="w-[220px] rounded-xl bg-zinc-900 shadow-2xl transition-all duration-200 cursor-pointer select-none"

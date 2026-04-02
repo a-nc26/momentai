@@ -121,13 +121,29 @@ Apply ONLY this change. Keep everything else intact. Generate the complete updat
         code = transpileComponent(code);
       } catch (secondErr) {
         return NextResponse.json(
-          { error: `Failed to generate valid JSX: ${secondErr instanceof Error ? secondErr.message : 'Invalid syntax'}` },
-          { status: 500 }
+          { 
+            error: `JSX validation failed: ${secondErr instanceof Error ? secondErr.message : 'Invalid syntax'}`,
+            suggestion: 'Try simplifying your request or check for syntax issues'
+          },
+          { status: 422 }
         );
       }
     }
 
-    return NextResponse.json({ componentCode: code });
+    const outgoingEdges = appMap.edges.filter((e) => e.source === moment.id);
+    const affectedMoments: Record<string, string> = {};
+
+    for (const edge of outgoingEdges) {
+      const targetMoment = appMap.moments.find((m) => m.id === edge.target);
+      if (targetMoment) {
+        affectedMoments[edge.target] = `Upstream screen "${moment.label}" was edited: ${change}`;
+      }
+    }
+
+    return NextResponse.json({ 
+      componentCode: code,
+      affectedMoments: Object.keys(affectedMoments).length > 0 ? affectedMoments : undefined
+    });
   } catch (err) {
     console.error('[edit-moment] Error:', err);
     return NextResponse.json(

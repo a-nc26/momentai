@@ -19,6 +19,7 @@ import '@xyflow/react/dist/style.css';
 import { useMomentaiStore } from '@/lib/store';
 import MomentNode from './MomentNode';
 import JourneyGroupNode from './JourneyGroupNode';
+import DataFlowEdge from './DataFlowEdge';
 import { JOURNEY_COLORS } from '@/lib/colors';
 import { AppMap } from '@/lib/types';
 import { createCanvasPositionResolver, MOMENT_NODE_H, MOMENT_NODE_W } from '@/lib/canvasLayout';
@@ -28,11 +29,27 @@ const nodeTypes = {
   journeyGroup: JourneyGroupNode,
 };
 
+const edgeTypes = {
+  smoothstep: DataFlowEdge,
+};
+
 const JOURNEY_PADDING = 40;
 const JOURNEY_HEADER_HEIGHT = 48;
 
-// Zoom threshold below which we collapse into bird's eye (journey-only) mode
-const BIRDS_EYE_ZOOM = 0.38;
+// Zoom thresholds for progressive disclosure
+const ZOOM_LEVELS = {
+  OVERVIEW: 0.38,      // Below this: bird's eye (journeys only)
+  JOURNEY_DETAIL: 0.7, // 0.38-0.7: journey groups + compact nodes
+  SCREEN_DETAIL: 1.2,  // 0.7-1.2: full node details + edge labels
+  DATA_FLOW: 2.0,      // 1.2-2.0: expanded nodes + data flow annotations
+};
+
+function getZoomLevel(zoom: number): 1 | 2 | 3 | 4 {
+  if (zoom < ZOOM_LEVELS.OVERVIEW) return 1;
+  if (zoom < ZOOM_LEVELS.JOURNEY_DETAIL) return 2;
+  if (zoom < ZOOM_LEVELS.SCREEN_DETAIL) return 3;
+  return 4;
+}
 
 function buildJourneyBounds(appMap: AppMap, expandedBranchParentId: string | null) {
   const resolve = createCanvasPositionResolver(appMap, expandedBranchParentId);
@@ -61,7 +78,7 @@ function buildNodes(
   appMap: AppMap,
   flaggedMoments: Record<string, string>,
   activeMomentId: string | null,
-  birdsEye: boolean,
+  zoomLevel: 1 | 2 | 3 | 4,
   expandedBranchParentId: string | null,
 ): Node[] {
   const bounds = buildJourneyBounds(appMap, expandedBranchParentId);
@@ -85,7 +102,7 @@ function buildNodes(
         label: journey.name,
         color,
         screenCount: b.count,
-        birdsEye,
+        birdsEye: zoomLevel === 1,
       },
       style: {
         width: b.maxX - b.minX + JOURNEY_PADDING * 2,
@@ -96,7 +113,7 @@ function buildNodes(
     });
   }
 
-  if (birdsEye) return nodes;
+  if (zoomLevel === 1) return nodes;
 
   for (const moment of appMap.moments) {
     if (moment.parentMomentId) continue;
@@ -122,6 +139,7 @@ function buildNodes(
         branchCount,
         active: moment.id === activeMomentId,
         buildStatus: moment.buildStatus ?? 'idle',
+        zoomLevel,
       },
     });
   }
@@ -129,8 +147,8 @@ function buildNodes(
   return nodes;
 }
 
-function buildEdges(appMap: AppMap, birdsEye: boolean): Edge[] {
-  if (birdsEye) {
+function buildEdges(appMap: AppMap, zoomLevel: 1 | 2 | 3 | 4): Edge[] {
+  if (zoomLevel === 1) {
     const journeyEdges: Edge[] = [];
     const seen = new Set<string>();
 
@@ -159,18 +177,21 @@ function buildEdges(appMap: AppMap, birdsEye: boolean): Edge[] {
     appMap.moments.filter((moment) => moment.parentMomentId).map((moment) => moment.id)
   );
 
+  const showLabels = zoomLevel >= 3;
+
   return appMap.edges
     .filter((edge) => !hiddenMomentIds.has(edge.source) && !hiddenMomentIds.has(edge.target))
     .map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      label: edge.label,
+      label: showLabels ? edge.label : undefined,
       type: 'smoothstep',
       style: { stroke: '#3f3f46', strokeWidth: 2 },
-      labelStyle: { fill: '#71717a', fontSize: 10 },
-      labelBgStyle: { fill: '#09090b', fillOpacity: 0.9 },
-      labelBgPadding: [6, 3] as [number, number],
+      labelStyle: showLabels ? { fill: '#71717a', fontSize: 10 } : undefined,
+      labelBgStyle: showLabels ? { fill: '#09090b', fillOpacity: 0.9 } : undefined,
+      labelBgPadding: showLabels ? ([6, 3] as [number, number]) : undefined,
+      data: { zoomLevel },
     }));
 }
 
@@ -187,13 +208,13 @@ function CanvasContent() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { fitView } = useReactFlow();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [birdsEye, setBirdsEye] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState<1 | 2 | 3 | 4>(3);
 
   useEffect(() => {
     if (!appMap) return;
     setNodes((prev) => {
       const posMap = Object.fromEntries(prev.map((n) => [n.id, n.position]));
-      return buildNodes(appMap, flaggedMoments, activeMomentId, birdsEye, expandedId).map((n) => {
+      return buildNodes(appMap, flaggedMoments, activeMomentId, zoomLevel, expandedId).map((n) => {
         const branchOf = (n.data as { moment?: { branchOf?: string } })?.moment?.branchOf;
         return {
           ...n,
@@ -202,8 +223,8 @@ function CanvasContent() {
         };
       });
     });
-    setEdges(buildEdges(appMap, birdsEye));
-  }, [appMap, flaggedMoments, activeMomentId, birdsEye, expandedId]);
+    setEdges(buildEdges(appMap, zoomLevel));
+  }, [appMap, flaggedMoments, activeMomentId, zoomLevel, expandedId]);
 
   useEffect(() => {
     setNodes((nds) =>
@@ -211,9 +232,8 @@ function CanvasContent() {
     );
   }, [selectedMomentId]);
 
-  // Auto switch bird's eye based on zoom level
   const onMoveEnd = useCallback((_: unknown, viewport: Viewport) => {
-    setBirdsEye(viewport.zoom < BIRDS_EYE_ZOOM);
+    setZoomLevel(getZoomLevel(viewport.zoom));
   }, []);
 
   const visibleNodes = useMemo(() => {
@@ -262,9 +282,7 @@ function CanvasContent() {
         );
         if (momentsInJourney.length === 0) return;
 
-        // Exit bird's eye first so nodes get added back to the graph,
-        // then fitView by ID — React Flow resolves IDs after the re-render
-        setBirdsEye(false);
+        setZoomLevel(3);
         setTimeout(() => {
           fitView({
             nodes: momentsInJourney.map((m) => ({ id: m.id })),
@@ -312,6 +330,7 @@ function CanvasContent() {
         nodes={visibleNodes}
         edges={visibleEdges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
@@ -334,9 +353,19 @@ function CanvasContent() {
 
         {/* Zoom indicator + overview button */}
         <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-          {birdsEye && (
+          {zoomLevel === 1 && (
             <div className="text-[10px] text-zinc-500 bg-zinc-900/80 border border-zinc-800 px-2.5 py-1 rounded-md">
               Overview — zoom in or double-click a journey to see screens
+            </div>
+          )}
+          {zoomLevel === 2 && (
+            <div className="text-[10px] text-zinc-500 bg-zinc-900/80 border border-zinc-800 px-2.5 py-1 rounded-md">
+              Journey Detail — zoom in for more details
+            </div>
+          )}
+          {zoomLevel === 4 && (
+            <div className="text-[10px] text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-md">
+              Maximum Detail — showing all data flow
             </div>
           )}
           <button
@@ -357,7 +386,7 @@ function CanvasContent() {
         {/* Hint */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="text-xs text-zinc-600 bg-zinc-900/80 px-3 py-1.5 rounded-full border border-zinc-800">
-            {birdsEye
+            {zoomLevel === 1
               ? 'Zoom in or double-click a journey to drill into its screens'
               : 'Click to edit · Double-click to zoom in on a screen + its connections'}
           </div>
