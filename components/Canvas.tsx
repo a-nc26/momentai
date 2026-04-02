@@ -181,18 +181,42 @@ function buildEdges(appMap: AppMap, zoomLevel: 1 | 2 | 3 | 4): Edge[] {
 
   return appMap.edges
     .filter((edge) => !hiddenMomentIds.has(edge.source) && !hiddenMomentIds.has(edge.target))
-    .map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      label: showLabels ? edge.label : undefined,
-      type: 'smoothstep',
-      style: { stroke: '#3f3f46', strokeWidth: 2 },
-      labelStyle: showLabels ? { fill: '#71717a', fontSize: 10 } : undefined,
-      labelBgStyle: showLabels ? { fill: '#09090b', fillOpacity: 0.9 } : undefined,
-      labelBgPadding: showLabels ? ([6, 3] as [number, number]) : undefined,
-      data: { zoomLevel },
-    }));
+    .map((edge, index) => {
+      const srcMoment = appMap.moments.find((m) => m.id === edge.source);
+      const tgtMoment = appMap.moments.find((m) => m.id === edge.target);
+      const isCrossJourney = srcMoment?.journeyId !== tgtMoment?.journeyId;
+      
+      // Much more subtle colors - let nodes be the focus
+      const edgeColor = isCrossJourney ? '#6366f1' : '#52525b';
+      
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        label: showLabels ? edge.label : undefined,
+        type: 'smoothstep',
+        style: { 
+          stroke: edgeColor, 
+          strokeWidth: zoomLevel >= 3 ? 1.5 : 1,
+          strokeOpacity: isCrossJourney ? 0.25 : 0.15,
+        },
+        labelStyle: showLabels ? { fill: '#71717a', fontSize: 10, fontWeight: 500 } : undefined,
+        labelBgStyle: showLabels ? { fill: '#09090b', fillOpacity: 0.95 } : undefined,
+        labelBgPadding: showLabels ? ([8, 4] as [number, number]) : undefined,
+        labelBgBorderRadius: showLabels ? 4 : undefined,
+        data: { 
+          zoomLevel,
+          ...edge,
+        },
+        animated: false,
+        markerEnd: {
+          type: 'arrowclosed' as const,
+          color: edgeColor,
+          width: 12,
+          height: 12,
+        },
+      };
+    });
 }
 
 function CanvasContent() {
@@ -249,8 +273,22 @@ function CanvasContent() {
   );
 
   const visibleEdges = useMemo(
-    () => edges.map((e) => ({ ...e, hidden: hiddenNodeIds.has(e.source) || hiddenNodeIds.has(e.target) })),
-    [edges, hiddenNodeIds]
+    () => edges.map((e) => {
+      const isHidden = hiddenNodeIds.has(e.source) || hiddenNodeIds.has(e.target);
+      const isConnectedToSelected = selectedMomentId && (e.source === selectedMomentId || e.target === selectedMomentId);
+      
+      return {
+        ...e,
+        hidden: isHidden,
+        selected: isConnectedToSelected,
+        style: isConnectedToSelected ? {
+          ...e.style,
+          strokeOpacity: 0.8,
+          strokeWidth: 2.5,
+        } : e.style,
+      };
+    }),
+    [edges, hiddenNodeIds, selectedMomentId]
   );
 
   // Single-click: select moment to open edit panel

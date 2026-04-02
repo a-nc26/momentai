@@ -29,8 +29,11 @@ export default function DataFlowEdge({
   const edgeData = data as FlowEdge | undefined;
   const showDataFlow = zoomLevel >= 4 && (edgeData?.dataFlow || edgeData?.condition);
 
-  const edgeColor = selected ? '#60a5fa' : '#52525b';
-  const edgeWidth = selected ? 2.5 : zoomLevel >= 3 ? 2 : 1.5;
+  // Determine color based on journey connection
+  const isCrossJourney = style?.stroke === '#6366f1';
+  const baseColor = isCrossJourney ? '#6366f1' : '#71717a';
+  const edgeColor = selected ? '#60a5fa' : baseColor;
+  const edgeOpacity = selected ? 1 : (isCrossJourney ? 0.5 : 0.3);
 
   return (
     <>
@@ -41,15 +44,15 @@ export default function DataFlowEdge({
         style={{
           ...style,
           stroke: edgeColor,
-          strokeWidth: edgeWidth,
-          strokeOpacity: 0.8,
+          strokeWidth: selected ? 3 : (zoomLevel >= 3 ? 2 : 1.5),
+          strokeOpacity: edgeOpacity,
         }}
       />
       
-      {/* Animated flow indicator */}
-      {zoomLevel >= 3 && (
-        <circle r="3" fill="#60a5fa" opacity="0.6">
-          <animateMotion dur="2s" repeatCount="indefinite" path={edgePath} />
+      {/* Animated flow indicator - only show at level 3+ and not when cluttered */}
+      {zoomLevel >= 3 && selected && (
+        <circle r="4" fill="#60a5fa" opacity="0.8">
+          <animateMotion dur="1.5s" repeatCount="indefinite" path={edgePath} />
         </circle>
       )}
       
