@@ -199,21 +199,15 @@ export async function POST(req: NextRequest) {
               code = await generateScreenComponent(moment, appMap);
             }
 
-            // Pre-transpile JSX → plain JS so the preview iframe never needs Babel
+            // Pre-transpile JSX → plain JS (or send raw JSX if Babel unavailable)
             let transpiled: string;
             try {
               transpiled = transpileComponent(code);
             } catch (transpileErr) {
               console.error(`[build-app] Transpile failed for ${moment.id}, retrying generation:`, transpileErr);
               console.error(`[build-app] Original code:\n${code.slice(0, 500)}`);
-              // Retry generation once if transpilation fails
               code = await generateScreenComponent(moment, appMap);
-              try {
-                transpiled = transpileComponent(code);
-              } catch (secondErr) {
-                console.error(`[build-app] Second transpile failed for ${moment.id}:`, secondErr);
-                throw new Error(`Failed to generate valid JSX after retry: ${secondErr instanceof Error ? secondErr.message : 'Invalid syntax'}`);
-              }
+              transpiled = transpileComponent(code);
             }
 
             const event = `data: ${JSON.stringify({

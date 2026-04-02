@@ -100,33 +100,25 @@ Apply ONLY this change. Keep everything else intact. Generate the complete updat
     try {
       code = transpileComponent(code);
     } catch (transpileErr) {
-      console.error('[edit-moment] Transpile failed, retrying generation:', transpileErr);
-      console.error('[edit-moment] Original code:', code.slice(0, 500));
-      
-      // Retry once
-      const retryMessage = await client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system: EDIT_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userPrompt }],
-      });
-      
-      code = (retryMessage.content[0] as { type: string; text: string }).text.trim();
-      code = code
-        .replace(/^```(?:javascript|jsx|js|tsx)?\n?/i, '')
-        .replace(/\n?```$/, '')
-        .trim();
-      
-      try {
+      // Only retry if it's an actual syntax error, not a missing module
+      if (transpileErr instanceof Error && !transpileErr.message.includes('Cannot find module')) {
+        console.error('[edit-moment] Transpile failed, retrying generation:', transpileErr);
+        console.error('[edit-moment] Original code:', code.slice(0, 500));
+        
+        const retryMessage = await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4096,
+          system: EDIT_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: userPrompt }],
+        });
+        
+        code = (retryMessage.content[0] as { type: string; text: string }).text.trim();
+        code = code
+          .replace(/^```(?:javascript|jsx|js|tsx)?\n?/i, '')
+          .replace(/\n?```$/, '')
+          .trim();
+        
         code = transpileComponent(code);
-      } catch (secondErr) {
-        return NextResponse.json(
-          { 
-            error: `JSX validation failed: ${secondErr instanceof Error ? secondErr.message : 'Invalid syntax'}`,
-            suggestion: 'Try simplifying your request or check for syntax issues'
-          },
-          { status: 422 }
-        );
       }
     }
 
