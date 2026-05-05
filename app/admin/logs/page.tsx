@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 interface LogEntry {
   id: string;
@@ -19,16 +21,21 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
 
-export default function AdminLogsPage() {
+function AdminLogsContent() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get('token') ?? '';
+
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false);
   const [filter, setFilter] = useState<'all' | 'warn' | 'error'>('all');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const fetchLogs = useCallback(async () => {
     try {
-      const res = await fetch('/admin/logs/api');
+      const res = await fetch(`/admin/logs/api?token=${encodeURIComponent(token)}`);
+      if (res.status === 401) { setUnauthorized(true); setLoading(false); return; }
       if (!res.ok) return;
       const { logs: data } = await res.json();
       setLogs(data ?? []);
@@ -58,6 +65,14 @@ export default function AdminLogsPage() {
     });
   };
 
+  if (unauthorized) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
+        <p className="text-zinc-500 text-sm">Access denied. Add <code className="text-zinc-300">?token=…</code> to the URL.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
       {/* Header */}
@@ -70,6 +85,12 @@ export default function AdminLogsPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              href="/admin/codes"
+              className="text-xs text-zinc-500 hover:text-zinc-300"
+            >
+              Invite codes
+            </Link>
             <span className="text-zinc-600 text-xs">
               Last refresh: {lastRefresh.toLocaleTimeString()}
             </span>
@@ -182,5 +203,13 @@ export default function AdminLogsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AdminLogsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-950" />}>
+      <AdminLogsContent />
+    </Suspense>
   );
 }

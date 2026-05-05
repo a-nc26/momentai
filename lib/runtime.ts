@@ -16,6 +16,15 @@ export interface RuntimeSessionState {
   values: Record<string, RuntimeValue>;
 }
 
+export interface RuntimeApiActionPayload {
+  operation: NonNullable<RuntimeActionSpec['operation']>;
+  namespace: string;
+  key: string;
+  value?: RuntimeValue;
+  resultKey?: string;
+  nextValues: Record<string, RuntimeValue>;
+}
+
 export function getStartMomentId(appMap: AppMap): string | null {
   const incoming = new Set(appMap.edges.map((edge) => edge.target));
   return (
@@ -108,7 +117,6 @@ function evaluateFormulas(
         const v = result[k];
         return typeof v === 'string' ? parseFloat(v) || 0 : (v ?? 0);
       });
-      // eslint-disable-next-line no-new-func
       const fn = new Function(...ctxKeys, `return (${formula})`);
       result[key] = fn(...ctxVals);
     } catch {
@@ -156,6 +164,50 @@ export function applyActionToSession(
     currentMomentId: nextTarget,
     history: session.currentMomentId ? [...session.history, session.currentMomentId] : session.history,
     values: nextValues,
+  };
+}
+
+export function buildRuntimeApiActionPayload(
+  action: RuntimeActionSpec,
+  values: Record<string, RuntimeValue>
+): RuntimeApiActionPayload | null {
+  if (action.kind !== 'api-call' || !action.operation) return null;
+  const nextValues = applyEffects(values, action.effects ?? []);
+  const keyTemplate = action.keyTemplate || action.resultKey || action.id;
+  const key = String(resolveTemplatedValue(keyTemplate, nextValues)).trim();
+  if (!key) return null;
+
+  const namespace = String(resolveTemplatedValue(action.namespace || 'default', nextValues)).trim() || 'default';
+  const payload: RuntimeApiActionPayload = {
+    operation: action.operation,
+    namespace,
+    key,
+    resultKey: action.resultKey,
+    nextValues,
+  };
+
+  if (action.operation !== 'read_record') {
+    payload.value = resolveTemplatedValue(action.valueTemplate ?? nextValues[key], nextValues) as RuntimeValue;
+  }
+
+  return payload;
+}
+
+export function applyApiActionResultToSession(
+  session: RuntimeSessionState,
+  action: RuntimeActionSpec,
+  nextValues: Record<string, RuntimeValue>,
+  statePatch: Record<string, RuntimeValue>
+): RuntimeSessionState {
+  const values = { ...nextValues, ...statePatch };
+  const target = action.target ?? session.currentMomentId;
+  return {
+    currentMomentId: target,
+    history:
+      target && target !== session.currentMomentId && session.currentMomentId
+        ? [...session.history, session.currentMomentId]
+        : session.history,
+    values,
   };
 }
 
@@ -342,18 +394,11 @@ export function buildFallbackScreenSpec(
           ]
         : [];
 
-  // For ui moments, the screen header (title + subtitle) already shows label + description.
-  // Adding a hero with the same content just duplicates it — so skip the hero for ui fallbacks.
-  const components: RuntimeComponentSpec[] = moment.type !== 'ui' ? [
-    {
-      id: `${moment.id}-hero`,
-      type: 'hero',
-      badge: badgeForMomentType(moment.type),
-      title: moment.label,
-      body: moment.description,
-      align: 'left',
-    },
-  ] : [];
+  // The screen header (eyebrow + title + subtitle) already renders label + description.
+  // Previous fallbacks also emitted a hero with the SAME text for non-ui types, which duplicated
+  // the content. Skip the hero across the board — type-specific helpers below add the only
+  // additional content needed (auth inputs, AI notice, data notice, etc.).
+  const components: RuntimeComponentSpec[] = [];
 
   if (moment.type === 'auth') {
     components.push(
@@ -581,6 +626,15 @@ function isValidRuntimeActionSpec(action: unknown): action is RuntimeActionSpec 
     return typeof candidate.target === 'string' && typeof candidate.formulas === 'object';
   }
 
+  if (candidate.kind === 'api-call') {
+    return (
+      (candidate.operation === 'upsert_record' ||
+        candidate.operation === 'append_record' ||
+        candidate.operation === 'read_record') &&
+      (typeof candidate.keyTemplate === 'string' || typeof candidate.resultKey === 'string')
+    );
+  }
+
   return false;
 }
 
@@ -615,13 +669,6 @@ function getValueAtPath(
 function cloneRuntimeValue<T>(value: T): T {
   if (value === undefined) return value;
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function badgeForMomentType(type: Moment['type']): string {
-  if (type === 'auth') return 'Auth Step';
-  if (type === 'ai') return 'AI-Powered';
-  if (type === 'data') return 'Data Layer';
-  return 'UI Screen';
 }
 
 function labelForTarget(targetId: string, appMap: AppMap): string {

@@ -6,11 +6,12 @@ import { JOURNEY_COLORS } from '@/lib/colors';
 import { Moment } from '@/lib/types';
 import MockFrame from './MockFrame';
 import StreamingMockFrame from './StreamingMockFrame';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import MobileRuntime from './runtime/MobileRuntime';
+import EditComposeTab from './edit/EditComposeTab';
+import { useMomentEdit } from '@/lib/hooks/useMomentEdit';
+import { buildDemoPreviewHtml } from '@/lib/demo-preview-html';
 
 type StateKey = 'main' | 'loading' | 'error' | 'empty';
 
@@ -70,33 +71,28 @@ export default function MomentDetail({ moment }: { moment: Moment }) {
   const [activeState, setActiveState] = useState<StateKey>('main');
   const [previewWidth, setPreviewWidth] = useState(340);
   const [stateHtmls, setStateHtmls] = useState<Partial<Record<StateKey, string>>>({});
-  const [editText, setEditText] = useState('');
   const [segments, setSegments] = useState<{ label: string; content: string }[]>([]);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
-  const [isCascading, setIsCascading] = useState(false);
-  const [cascadeCount, setCascadeCount] = useState(0);
 
   const {
     appMap,
-    updateMoment,
-    updateAppRuntime,
     setMomentMock,
     setDetailMoment,
-    addMoments,
-    removeEdges,
-    flagMoments,
     clearFlag,
-    batchUpdateMoments,
     flaggedMoments,
-    isEditing,
-    setEditing,
+    pendingCascade,
   } = useMomentaiStore();
+  const { isEditingMoment, canUndo, canRedo, undo, redo } = useMomentEdit();
+  const isEditing = isEditingMoment(moment.id);
+  const isCascading = !!pendingCascade && pendingCascade.editedMomentId === moment.id;
+  const cascadeCount = isCascading ? pendingCascade.items.length : 0;
 
   const allMoments = appMap?.moments ?? [];
   const journeyIndex = appMap?.journeys.findIndex((j) => j.id === moment.journeyId) ?? 0;
   const color = JOURNEY_COLORS[journeyIndex % JOURNEY_COLORS.length];
   const journey = appMap?.journeys.find((j) => j.id === moment.journeyId);
   const flagReason = flaggedMoments[moment.id];
+
   const supportsLegacyStateTabs = !moment.screenSpec;
   const availablePreviewStates: StateKey[] = supportsLegacyStateTabs
     ? ['main', 'loading', 'error', 'empty']
@@ -199,90 +195,19 @@ export default function MomentDetail({ moment }: { moment: Moment }) {
     .map((edge) => appMap?.moments.find((entry) => entry.id === edge.target))
     .filter(Boolean) as Moment[];
 
-  const handleApplyEdit = async () => {
-    if (!editText.trim() || isEditing || !appMap || !journey) return;
-    setEditing(true);
-    const changeText = editText;
-    setEditText('');
-
-    try {
-      const res = await fetch('/api/edit-moment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ moment, change: changeText, journey, appMap }),
-      });
-      const updated = await res.json();
-
-      updateMoment(moment.id, {
-        label: updated.label,
-        type: updated.type,
-        description: updated.description,
-        preview: updated.preview,
-        mockHtml: updated.mockHtml ?? moment.mockHtml,
-        screenSpec: updated.screenSpec ?? moment.screenSpec,
-      });
-
-      if (updated.stateSchema || updated.initialState || updated.runtimeVersion || updated.appPlatform) {
-        updateAppRuntime({
-          stateSchema: updated.stateSchema ?? appMap.stateSchema,
-          initialState: updated.initialState ?? appMap.initialState,
-          runtimeVersion: updated.runtimeVersion ?? appMap.runtimeVersion,
-          appPlatform: updated.appPlatform ?? appMap.appPlatform,
-        });
-      }
-
-      if (updated.removedEdgeIds?.length) removeEdges(updated.removedEdgeIds);
-
-      if (updated.newMoments?.length) {
-        addMoments(updated.newMoments, updated.newEdges ?? []);
-        const newIds = new Set((updated.newMoments as { id: string }[]).map((entry) => entry.id));
-
-        for (const edge of (updated.newEdges ?? []) as { source: string; target: string }[]) {
-          if (!newIds.has(edge.source)) continue;
-          const target = appMap.moments.find((entry) => entry.id === edge.target);
-          if (target?.branchOf) updateMoment(target.id, { branchOf: edge.source });
-        }
-      }
-
-      setStateHtmls({});
-      setActiveState('main');
-
-      const affectedMoments: Record<string, string> = updated.affectedMoments ?? {};
-      const affectedItems = Object.entries(affectedMoments)
-        .map(([id, reason]) => ({ moment: appMap.moments.find((entry) => entry.id === id)!, reason: reason as string }))
-        .filter((item) => item.moment);
-
-      if (affectedItems.length > 0) {
-        flagMoments(affectedMoments);
-        setCascadeCount(affectedItems.length);
-        setIsCascading(true);
-        fetch('/api/propagate-batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            items: affectedItems,
-            editChange: changeText,
-            editedMoment: { ...moment, ...updated },
-            journey,
-            appMap,
-          }),
-        })
-          .then((response) => response.json())
-          .then((result) => {
-            if (result.updates) batchUpdateMoments(result.updates);
-          })
-          .catch(console.error)
-          .finally(() => setIsCascading(false));
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setEditing(false);
-    }
-  };
-
   const renderPreview = () => {
     if (activeState === 'main') {
+      if (appMap?.demoMode && appMap) {
+        return (
+          <MockFrame
+            key={`${moment.id}-main-demo`}
+            html={buildDemoPreviewHtml(moment, appMap)}
+            width={previewWidth}
+            mode={appMap?.appPlatform ?? 'mobile'}
+          />
+        );
+      }
+
       if (moment.screenSpec && appMap) {
         return (
           <div className="relative">
@@ -339,6 +264,17 @@ export default function MomentDetail({ moment }: { moment: Moment }) {
         <MockFrame
           key={`${moment.id}-${activeState}`}
           html={stateHtmls[activeState]!}
+          width={previewWidth}
+          mode={appMap?.appPlatform ?? 'mobile'}
+        />
+      );
+    }
+
+    if (appMap?.demoMode && appMap) {
+      return (
+        <MockFrame
+          key={`${moment.id}-${activeState}-demo`}
+          html={buildDemoPreviewHtml(moment, appMap)}
           width={previewWidth}
           mode={appMap?.appPlatform ?? 'mobile'}
         />
@@ -648,32 +584,28 @@ export default function MomentDetail({ moment }: { moment: Moment }) {
             <Separator className="bg-zinc-800 shrink-0" />
 
             <div className="p-5 shrink-0 space-y-3">
-              <p className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider">Edit this Moment</p>
-              <Textarea
-                className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 resize-none text-sm min-h-[80px] focus-visible:ring-indigo-500/40 focus-visible:border-indigo-500/50"
-                placeholder="e.g. Add a dark mode toggle, make the button red, add a search bar..."
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleApplyEdit();
-                }}
-                disabled={isEditing}
-              />
-              <Button
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium h-10 transition-all disabled:opacity-50"
-                onClick={handleApplyEdit}
-                disabled={!editText.trim() || isEditing}
-              >
-                {isEditing ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    Applying…
-                  </span>
-                ) : (
-                  'Apply Edit'
-                )}
-              </Button>
-              <p className="text-zinc-700 text-[10px] text-center">⌘ + Enter to apply</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-zinc-500 text-[10px] font-medium uppercase tracking-wider">Edit this Moment</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={undo}
+                    disabled={!canUndo || isEditing}
+                    className="text-[10px] text-zinc-400 hover:text-white disabled:text-zinc-700"
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={redo}
+                    disabled={!canRedo || isEditing}
+                    className="text-[10px] text-zinc-400 hover:text-white disabled:text-zinc-700"
+                  >
+                    Redo
+                  </button>
+                </div>
+              </div>
+              <EditComposeTab moment={moment} />
             </div>
           </div>
         </div>

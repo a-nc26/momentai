@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+/* eslint-disable react-hooks/set-state-in-effect */
+
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppMap,
   RuntimeActionSpec,
@@ -9,6 +11,8 @@ import {
 } from '@/lib/types';
 import {
   applyActionToSession,
+  applyApiActionResultToSession,
+  buildRuntimeApiActionPayload,
   createInitialRuntimeSession,
   getMomentById,
   isActionEnabled,
@@ -18,8 +22,20 @@ import {
   toggleSessionArrayValue,
   type RuntimeSessionState,
 } from '@/lib/runtime';
+import {
+  ensureRuntimeSession,
+  executePublishedRuntimeAction,
+  getRuntimeBackend,
+  loadPublishedRuntimeState,
+} from '@/lib/runtime-client';
 import { debugLog } from '@/lib/debug-log';
 import { useSession } from '@/lib/useSession';
+import { DEMO_AI_STUBS } from '@/lib/demo-ai-stubs';
+
+/** Stable fingerprint for when the map structure changed (vs only the previewed moment). */
+function appMapStructureKey(map: AppMap): string {
+  return `${map.appName}:${map.moments.map((m) => m.id).join('|')}:${map.edges.map((e) => `${e.source}>${e.target}`).join('|')}`;
+}
 
 export default function MobileRuntime({
   appMap,
@@ -43,6 +59,8 @@ export default function MobileRuntime({
   const [isSynced, setIsSynced] = useState(!projectId);
   const [aiRunning, setAiRunning] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [runtimeGuestId, setRuntimeGuestId] = useState<string | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
 
   const { saveState } = useSession({
     projectId: projectId ?? null,
@@ -52,26 +70,104 @@ export default function MobileRuntime({
     },
   });
 
+  const currentMoment = getMomentById(appMap, session.currentMomentId);
+
   // Mark synced immediately if no projectId (no DB needed)
   useEffect(() => {
-    if (!projectId) setIsSynced(true);
-  }, [projectId]);
+    if (!projectId && !getRuntimeBackend(appMap)) setIsSynced(true);
+  }, [projectId, appMap]);
 
   useEffect(() => {
-    const initial = createInitialRuntimeSession(appMap, startMomentId);
-    debugLog('Runtime', 'Session initialized', {
-      startMomentId,
-      values: initial.values,
-      stateSchema: appMap.stateSchema,
+    const backend = getRuntimeBackend(appMap);
+    if (!backend) return;
+    let cancelled = false;
+    setIsSynced(false);
+    setRuntimeError(null);
+
+    ensureRuntimeSession(appMap)
+      .then(async (guestId) => {
+        if (!guestId || cancelled) return;
+        setRuntimeGuestId(guestId);
+        const persistedState = await loadPublishedRuntimeState(appMap, guestId);
+        if (cancelled) return;
+        setSession((current) => ({
+          ...current,
+          values: { ...current.values, ...persistedState },
+        }));
+        setIsSynced(true);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setRuntimeError(err instanceof Error ? err.message : 'Runtime backend failed');
+        setIsSynced(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appMap]);
+
+  const structureKeyRef = useRef<string>(appMapStructureKey(appMap));
+  /** Last `startMomentId` we applied from props — avoids clobbering internal navigation. */
+  const lastSyncedStartIdRef = useRef<string>(startMomentId);
+
+  useEffect(() => {
+    const nextKey = appMapStructureKey(appMap);
+    if (nextKey !== structureKeyRef.current) {
+      structureKeyRef.current = nextKey;
+      lastSyncedStartIdRef.current = startMomentId;
+      const initial = createInitialRuntimeSession(appMap, startMomentId);
+      debugLog('Runtime', 'Session reset (app map changed)', {
+        startMomentId,
+        values: initial.values,
+        stateSchema: appMap.stateSchema,
+      });
+      setSession(initial);
+      return;
+    }
+
+    // Only when the parent-selected screen changes (canvas / panel). If we synced
+    // whenever session.currentMomentId !== startMomentId, the first render after a tap
+    // would reset before onMomentChange updates props — buttons would appear dead.
+    if (startMomentId === lastSyncedStartIdRef.current) {
+      return;
+    }
+    lastSyncedStartIdRef.current = startMomentId;
+
+    setSession((prev) => {
+      if (prev.currentMomentId === startMomentId) return prev;
+      debugLog('Runtime', 'External start moment changed — syncing session', {
+        from: prev.currentMomentId,
+        to: startMomentId,
+      });
+      return { ...prev, currentMomentId: startMomentId, history: [] };
     });
-    setSession(initial);
   }, [appMap, startMomentId]);
 
-  // Auto-run AI moments when navigated to
+  // Auto-run AI moments when navigated to (demo: instant local stubs — no API, no loading overlay)
   useEffect(() => {
-    if (!currentMoment || currentMoment.type !== 'ai' || !currentMoment.promptTemplate) return;
-    const responseKey = currentMoment.responseKey ?? `${currentMoment.id}_response`;
-    if (session.values[responseKey]) return; // already have a response
+    const moment = getMomentById(appMap, session.currentMomentId);
+    if (!moment || moment.type !== 'ai' || !moment.promptTemplate) return;
+    const responseKey = moment.responseKey ?? `${moment.id}_response`;
+    if (session.values[responseKey]) return;
+
+    let cancelled = false;
+
+    if (appMap.demoMode) {
+      setSession((current) => {
+        if (current.values[responseKey]) return current;
+        const stub =
+          DEMO_AI_STUBS[moment.id] ??
+          'Demo insight — in production this step uses the same model family as Build & Share.';
+        const next = {
+          ...current,
+          values: { ...current.values, [responseKey]: stub },
+        } as RuntimeSessionState;
+        saveState(next.values as Record<string, unknown>);
+        return next;
+      });
+      return;
+    }
 
     setAiRunning(true);
     setAiError(null);
@@ -79,19 +175,30 @@ export default function MobileRuntime({
     fetch('/api/run-moment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ promptTemplate: currentMoment.promptTemplate, values: session.values }),
+      body: JSON.stringify({ promptTemplate: moment.promptTemplate, values: session.values }),
     })
       .then((r) => r.json())
       .then(({ response }) => {
+        if (cancelled) return;
         setSession((current) => {
+          if (current.values[responseKey]) return current;
           const next = { ...current, values: { ...current.values, [responseKey]: response } } as RuntimeSessionState;
           saveState(next.values as Record<string, unknown>);
           return next;
         });
       })
-      .catch(() => setAiError('AI step failed — check your connection'))
-      .finally(() => setAiRunning(false));
-  }, [session.currentMomentId]);
+      .catch(() => {
+        if (!cancelled) setAiError('AI step failed — check your connection');
+      })
+      .finally(() => {
+        if (!cancelled) setAiRunning(false);
+      });
+
+    return () => {
+      cancelled = true;
+      setAiRunning(false);
+    };
+  }, [session.currentMomentId, appMap, saveState]);
 
   useEffect(() => {
     onMomentChange?.(session.currentMomentId);
@@ -104,7 +211,51 @@ export default function MobileRuntime({
     });
   }, [session.currentMomentId]);
 
-  const currentMoment = getMomentById(appMap, session.currentMomentId);
+  const handleRuntimeAction = useCallback(
+    async (action: RuntimeActionSpec) => {
+      if (!isActionEnabled(action, session)) return;
+      debugLog('Runtime', `Action: ${action.label}`, {
+        kind: action.kind,
+        target: action.target,
+        effects: action.effects,
+        values: session.values,
+      });
+
+      if (action.kind !== 'api-call') {
+        setSession((current) => {
+          const next = applyActionToSession(current, action);
+          saveState(next.values as Record<string, unknown>);
+          return next;
+        });
+        return;
+      }
+
+      const payload = buildRuntimeApiActionPayload(action, session.values);
+      if (!payload || !runtimeGuestId) {
+        setRuntimeError('Publish this app before running backend actions.');
+        return;
+      }
+
+      try {
+        const statePatch = await executePublishedRuntimeAction(appMap, runtimeGuestId, payload);
+        setSession((current) => {
+          const next = applyApiActionResultToSession(current, action, payload.nextValues, statePatch);
+          saveState(next.values as Record<string, unknown>);
+          return next;
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Runtime action failed';
+        setRuntimeError(message);
+        if (action.onErrorKey) {
+          setSession((current) => ({
+            ...current,
+            values: { ...current.values, [action.onErrorKey as string]: message },
+          }));
+        }
+      }
+    },
+    [appMap, runtimeGuestId, saveState, session]
+  );
   const screenSpec = currentMoment ? resolveScreenSpec(currentMoment, appMap) : null;
   const phoneMetrics = getPhoneMetrics(phoneWidth, maxHeight);
   const webMetrics = getWebMetrics(phoneWidth);
@@ -175,15 +326,7 @@ export default function MobileRuntime({
                     <button
                       key={action.id}
                       type="button"
-                      onClick={() => {
-                        if (!isActionEnabled(action, session)) return;
-                        debugLog('Runtime', `Action: ${action.label}`, { kind: action.kind, target: action.target, values: session.values });
-                        setSession((current) => {
-                          const next = applyActionToSession(current, action);
-                          saveState(next.values as Record<string, unknown>);
-                          return next;
-                        });
-                      }}
+                      onClick={() => void handleRuntimeAction(action)}
                       disabled={!isActionEnabled(action, session)}
                       className={actionButtonClassWeb(action)}
                     >
@@ -259,12 +402,7 @@ export default function MobileRuntime({
                         debugLog('Runtime', `Action blocked (requiredKeys not filled): ${action.label}`, { requiredKeys: action.requiredKeys, values: session.values }, 'warn');
                         return;
                       }
-                      debugLog('Runtime', `Action: ${action.label}`, { kind: action.kind, target: action.target, effects: action.effects, values: session.values });
-                      setSession((current) => {
-                        const next = applyActionToSession(current, action);
-                        saveState(next.values as Record<string, unknown>);
-                        return next;
-                      });
+                      void handleRuntimeAction(action);
                     }}
                     disabled={!isActionEnabled(action, session)}
                     className={actionButtonClass(action)}
@@ -320,13 +458,19 @@ export default function MobileRuntime({
           {aiRunning && (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-white/90 backdrop-blur-sm">
               <div className="w-8 h-8 rounded-full border-2 border-violet-200 border-t-violet-500 animate-spin" />
-              <p className="text-violet-600 text-sm font-medium">Claude is thinking…</p>
+              <p className="text-violet-600 text-sm font-medium">Generating…</p>
             </div>
           )}
           {aiError && !aiRunning && (
             <div className="absolute bottom-8 left-6 right-6 z-30 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <p className="text-red-600 text-xs">{aiError}</p>
               <button onClick={() => setAiError(null)} className="text-red-400 text-xs underline mt-0.5">Dismiss</button>
+            </div>
+          )}
+          {runtimeError && (
+            <div className="absolute bottom-8 left-6 right-6 z-30 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <p className="text-amber-700 text-xs">{runtimeError}</p>
+              <button onClick={() => setRuntimeError(null)} className="text-amber-500 text-xs underline mt-0.5">Dismiss</button>
             </div>
           )}
           {screenContent}
@@ -377,7 +521,7 @@ export default function MobileRuntime({
           {aiRunning && (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-white/90 backdrop-blur-sm" style={{ borderRadius: Math.round(28 * phoneMetrics.scale) }}>
               <div className="w-8 h-8 rounded-full border-2 border-violet-200 border-t-violet-500 animate-spin" />
-              <p className="text-violet-600 text-xs font-medium">Claude is thinking…</p>
+              <p className="text-violet-600 text-xs font-medium">Generating…</p>
             </div>
           )}
 
@@ -386,6 +530,13 @@ export default function MobileRuntime({
             <div className="absolute bottom-20 left-4 right-4 z-30 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
               <p className="text-red-600 text-[10px]">{aiError}</p>
               <button onClick={() => setAiError(null)} className="text-red-400 text-[10px] underline mt-0.5">Dismiss</button>
+            </div>
+          )}
+
+          {runtimeError && (
+            <div className="absolute bottom-20 left-4 right-4 z-30 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              <p className="text-amber-700 text-[10px]">{runtimeError}</p>
+              <button onClick={() => setRuntimeError(null)} className="text-amber-500 text-[10px] underline mt-0.5">Dismiss</button>
             </div>
           )}
 

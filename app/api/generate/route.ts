@@ -2,11 +2,20 @@ import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { normalizeRuntimeAppMap } from '@/lib/runtime';
 import type { AppMap } from '@/lib/types';
+import { requireBuildCredits } from '@/lib/build-access-server';
+import { CREDIT_GENERATE } from '@/lib/credit-costs';
+import { logUsageEvent } from '@/lib/usage-events';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const THINKING_MAX_TOKENS = 16000;   // thinking budget + output
-const THINKING_BUDGET = 8000;        // tokens Claude can use to reason
-const COMPACT_GENERATE_MAX_TOKENS = 4096;
+const THINKING_MAX_TOKENS = 40000;   // thinking budget + output
+const THINKING_BUDGET = 9000;        // tokens Claude can use to reason
+const COMPACT_GENERATE_MAX_TOKENS = 15000;
+const SSE_DETAIL_MAX = 900;
+
+function formatErrorForClient(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.length > SSE_DETAIL_MAX ? `${msg.slice(0, SSE_DETAIL_MAX)}…` : msg;
+}
 
 // ─── SSE helpers ────────────────────────────────────────────────────────────
 
@@ -37,14 +46,14 @@ function makeStream() {
 
 export async function POST(req: NextRequest) {
   const { description, platform = 'mobile' } = await req.json();
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return Response.json({ error: 'Missing ANTHROPIC_API_KEY on the server.' }, { status: 500 });
-  }
-
   if (!description?.trim()) {
     return Response.json({ error: 'Please enter a short app description first.' }, { status: 400 });
   }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return Response.json({ error: 'Missing ANTHROPIC_API_KEY on the server.' }, { status: 500 });
+  }
+  const denied = await requireBuildCredits(req, CREDIT_GENERATE);
+  if (denied) return denied;
 
   const { send, close, response } = makeStream();
 
@@ -56,10 +65,33 @@ export async function POST(req: NextRequest) {
       const appMap = await generateWithStreaming(description.trim(), platform as 'mobile' | 'web', send);
       const normalized = normalizeRuntimeAppMap(appMap);
 
+      await logUsageEvent({
+        eventType: 'generate_map',
+        route: '/api/generate',
+        model: 'claude-sonnet-4-6',
+        metadata: {
+          platform,
+          prompt_chars: description.trim().length,
+          journeys: normalized.journeys?.length ?? 0,
+          moments: normalized.moments?.length ?? 0,
+        },
+      });
+
       send({ type: 'status', message: 'Done.' });
       send({ type: 'result', appMap: normalized });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Generation failed. Try a shorter prompt.';
+      await logUsageEvent({
+        eventType: 'generate_map',
+        status: 'error',
+        route: '/api/generate',
+        model: 'claude-sonnet-4-6',
+        metadata: {
+          platform,
+          prompt_chars: description.trim().length,
+          message,
+        },
+      });
       send({ type: 'error', message });
     } finally {
       close();
@@ -78,7 +110,7 @@ async function generateWithStreaming(
 ): Promise<AppMap> {
   // Attempt 1 — extended thinking for highest quality output
   try {
-    send({ type: 'status', message: 'Claude is thinking about your app…' });
+    send({ type: 'status', message: 'Moment is thinking about your app…' });
     const text = await streamThinkingCall(buildPrimaryPrompt(description, platform), send);
     send({ type: 'status', message: 'Parsing app structure…' });
     const parsed = await parseGeneratedMap(text, send);
@@ -89,6 +121,11 @@ async function generateWithStreaming(
     return validated;
   } catch (err) {
     console.error('Primary generation failed:', err);
+    send({
+      type: 'warning',
+      message: 'Primary pass failed — retrying with compact output.',
+      detail: formatErrorForClient(err),
+    });
     send({ type: 'status', message: 'Retrying with compact mode…' });
   }
 
@@ -100,6 +137,11 @@ async function generateWithStreaming(
     return { ...parsed, appPlatform: platform } as AppMap;
   } catch (err) {
     console.error('Compact generation failed:', err);
+    send({
+      type: 'warning',
+      message: 'Compact pass failed — using a minimal starter map.',
+      detail: formatErrorForClient(err),
+    });
     send({ type: 'status', message: 'Using starter scaffold…' });
   }
 
@@ -126,7 +168,7 @@ async function streamThinkingCall(
     if (event.type === 'content_block_start') {
       const block = (event as { content_block?: { type?: string } }).content_block;
       if (block?.type === 'thinking') {
-        send({ type: 'status', message: 'Claude is reasoning about your app…' });
+        send({ type: 'status', message: 'Moment is reasoning about your app…' });
       } else if (block?.type === 'text') {
         send({ type: 'status', message: 'Writing app structure…' });
       }
@@ -374,6 +416,7 @@ The JSON must follow this exact structure:
       "type": "ui",
       "preview": "Detailed description of what this screen or step looks like to the user",
       "promptTemplate": "ONLY for type=ai moments: describe the Claude prompt that would run here, e.g. 'You are a fitness coach. Given {{goal}} and {{fitnessLevel}}, generate a weekly workout plan.'",
+      "branchOf": "OPTIONAL — parent moment ID when this is a conditional branch variant (see BRANCH NODES below)",
       "position": { "x": 0, "y": 0 },
       "screenSpec": {
         "eyebrow": "Optional short section label",
@@ -413,15 +456,15 @@ The JSON must follow this exact structure:
 }
 
 Rules:
-- Create 2-5 distinct journeys representing real user flows
-- Each journey should have 3-6 moments
-- Prefer the smallest complete map that still captures the main product loops
+- Create 2-6 distinct journeys representing real user flows
+- Each journey should have 5-10 moments — include onboarding, core tasks, review/success, settings or profile, and branches for errors or alternate paths where they fit the product
+- Aim for a rich, realistic flow that tells the full user story; avoid bare-minimum skeletons with only a few screens
 - Moment types: "ui" (screens/forms), "ai" (AI-powered steps), "data" (database/storage operations), "auth" (authentication steps)
 - Every "ai" moment MUST include a "promptTemplate" (use {{stateKey}} references) AND a "responseKey" (the state key where the AI response is stored, e.g. "affordanceAdvice")
 - appPlatform must be "mobile" and runtimeVersion must be 1
 - Every moment MUST include a runnable screenSpec with REAL interactive components — never just description text
 - Use ONLY these component types: "hero", "input", "choice-cards", "chip-group", "notice", "summary-card", "stats-grid", "list", "spacer"
-- Use ONLY these action kinds: "navigate", "branch", "back", "compute"
+- Use ONLY these action kinds: "navigate", "branch", "back", "compute", "api-call"
 - Use requiredKeys to block submit/continue until the needed fields are filled
 - Use branch actions when navigation depends on a selected state key
 - Use app-level stateSchema for any field a user can edit or any value later screens depend on
@@ -430,6 +473,23 @@ Rules:
 - Create edges connecting moments within each journey in sequence
 - Add cross-journey edges where flows naturally intersect
 - All IDs must be unique, lowercase, with hyphens only
+
+BRANCH NODES — conditional paths that fork from a parent moment:
+- When a moment has multiple possible outcomes (success/failure, different choices, conditional paths), create BRANCH NODES.
+- A branch node is a moment with "branchOf": "parent-moment-id" — it represents one conditional outcome of the parent.
+- Branch nodes are hidden by default on the canvas and expand when the parent is clicked, keeping the map clean.
+- Every app MUST have at least 1-2 branch points. Real apps always have conditional flows.
+- Example: A "Login" screen has two outcomes:
+    { "id": "login-success", "branchOf": "login", "label": "Login Success", ... }
+    { "id": "login-error", "branchOf": "login", "label": "Login Failed", ... }
+  With edges: login → login-success → dashboard, login → login-error → login (retry)
+- Example: A "Pick Plan" screen branches on the selected plan:
+    { "id": "free-plan-setup", "branchOf": "pick-plan", "label": "Free Plan Setup", ... }
+    { "id": "pro-plan-checkout", "branchOf": "pick-plan", "label": "Pro Checkout", ... }
+- Position branch nodes 150px below their parent (same x, y + 150)
+- Branch nodes belong to the same journeyId as their parent
+- Create edges FROM the parent TO each branch node, AND from each branch node to its next destination
+- Think about: What if the user cancels? What if validation fails? What if they choose option A vs B? These are branches.
 
 CRITICAL — screenSpec must be real UI, not text descriptions:
 - "ui" moments: MUST have at minimum 2-3 real interactive components (inputs, choice-cards, chip-groups). NEVER a screen with only a hero component and nothing else.
@@ -461,6 +521,42 @@ COMPUTE ACTION — use for any deterministic math (calculators, projections, sco
 - The results screen then uses stats-grid: [{ label: "Monthly Payment", value: "\${{monthlyPayment}}" }, { label: "Loan Amount", value: "\${{loanAmount}}" }]
 - ALWAYS add the computed output keys (loanAmount, monthlyPayment, etc.) to stateSchema with type "number" and defaultValue 0
 
+BACKEND ACTION PATTERN — use for real save/load behavior:
+- When a user action should persist data beyond the current screen/session (save profile, log workout, create record, submit entry, load history), use kind: "api-call".
+- Fields:
+  operation: "upsert_record" | "append_record" | "read_record"
+  namespace: stable app area such as "profile", "logs", "items"
+  keyTemplate: stable key, using {{stateKey}} templates when needed
+  valueTemplate: value/object/list item to store (for writes)
+  resultKey: state key to receive the saved/read value
+  target: optional next moment ID after success
+- Example save:
+  actions: [{
+    "id": "save-profile",
+    "label": "Save profile",
+    "kind": "api-call",
+    "style": "primary",
+    "operation": "upsert_record",
+    "namespace": "profile",
+    "keyTemplate": "profile",
+    "valueTemplate": { "name": "{{profileName}}", "goal": "{{fitnessGoal}}" },
+    "resultKey": "savedProfile",
+    "target": "dashboard",
+    "requiredKeys": ["profileName", "fitnessGoal"]
+  }]
+- Example append:
+  actions: [{
+    "id": "log-workout",
+    "label": "Log workout",
+    "kind": "api-call",
+    "operation": "append_record",
+    "namespace": "workouts",
+    "keyTemplate": "recentWorkouts",
+    "valueTemplate": "{{workoutType}} - {{workoutDuration}} min",
+    "resultKey": "recentWorkouts",
+    "target": "dashboard"
+  }]
+
 AI MOMENT PATTERN — use for qualitative analysis, recommendations, personalization:
 - Add promptTemplate: a Claude prompt using {{stateKey}} references, e.g. "You are a financial advisor. The user wants to buy a \${{propertyPrice}} home with \${{downPayment}} down. Their income is \${{annualIncome}}. Give concise affordability advice in 3 bullet points."
 - Add responseKey: the state key that stores the response, e.g. "affordabilityAdvice"
@@ -491,7 +587,7 @@ WEB PLATFORM SPECIFICS (appPlatform: "web"):
 }
 
 function buildCompactPrompt(description: string, platform: 'mobile' | 'web' = 'mobile') {
-  return `You are generating a compact starter app graph for Momentum.
+  return `You are generating a starter app graph for Momentum (structure only — no screenSpec).
 
 App Description: "${description}"
 
@@ -520,7 +616,7 @@ Return ONLY valid JSON:
 }
 
 Rules:
-- 2-4 journeys, 3-5 moments per journey
+- 2-5 journeys, 5-9 moments per journey — cover the full flow (not just 3-4 steps)
 - Types: "ui", "ai", "data", "auth"
 - No screenSpec, stateSchema, or initialState
 - Position journeys on separate rows: y = 0, 320, 640, 960

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import DeviceShell from './preview/DeviceShell';
 
 /**
  * Like MockFrame but fetches and streams the HTML directly into the iframe
@@ -37,9 +38,6 @@ export default function StreamingMockFrame({
   const SCALE = SCREEN_W / BASE_W;
   const IFRAME_H = IS_WEB ? 800 : 844;
   const SCREEN_H = Math.round(IFRAME_H * SCALE);
-  const PADDING = IS_WEB ? 8 : 10;
-  const SHELL_W = SCREEN_W + PADDING * 2;
-  const SHELL_H = SCREEN_H + PADDING * 2;
 
   // Always keep a ref to the latest body so the effect uses fresh data
   const bodyRef = useRef(body);
@@ -48,22 +46,20 @@ export default function StreamingMockFrame({
   // Use fetchKey if provided; otherwise fall back to full body serialisation
   const effectKey = fetchKey ?? JSON.stringify(body);
 
-  const scrollInsidePhone = useCallback(
-    (deltaY: number) => {
-      const iframe = iframeRef.current;
-      if (!iframe) return false;
-      const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
-      const scroller = doc?.scrollingElement;
-      if (!scroller) return false;
-      const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-      if (maxScroll <= 0) return false;
-      const next = Math.max(0, Math.min(maxScroll, scroller.scrollTop + deltaY / SCALE));
-      const changed = Math.abs(next - scroller.scrollTop) > 0.5;
-      scroller.scrollTop = next;
-      return changed;
-    },
-    [SCALE]
-  );
+  const scrollInsidePhone = (deltaY: number) => {
+    const iframe = iframeRef.current;
+    if (!iframe) return false;
+    const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+    const scroller = doc?.scrollingElement;
+    if (!scroller) return false;
+    const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+    if (maxScroll <= 0) return false;
+    const previous = scroller.scrollTop;
+    const next = Math.max(0, Math.min(maxScroll, previous + deltaY / SCALE));
+    const changed = Math.abs(next - previous) > 0.5;
+    iframe.contentWindow?.scrollTo({ top: next, behavior: 'auto' });
+    return changed;
+  };
 
   useEffect(() => {
     const abort = new AbortController();
@@ -149,78 +145,44 @@ export default function StreamingMockFrame({
   }, [url, effectKey, retryKey]);
 
   return (
-    <div className="relative mx-auto" style={{ width: SHELL_W }}>
-      {/* Phone shell */}
-      <div
-        className="relative"
+    <>
+      <DeviceShell
+      mode={mode}
+      baseWidth={BASE_W}
+      screenWidth={SCREEN_W}
+      screenHeight={SCREEN_H}
+      screenBackground="#fff"
+      onScreenWheel={(e) => {
+        if (scrollInsidePhone(e.deltaY)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }}
+    >
+      <iframe
+        ref={iframeRef}
+        title="Screen preview"
+        scrolling="yes"
+        sandbox="allow-scripts allow-same-origin allow-forms"
+        className="relative z-[1]"
         style={{
-          width: SHELL_W,
-          height: SHELL_H,
-          background: IS_WEB ? '#111827' : '#1c1c1e',
-          padding: PADDING,
-          borderRadius: IS_WEB ? Math.round(16 * SCALE) : Math.round(36 * SCALE),
-          boxShadow: IS_WEB
-            ? '0 0 0 1px #374151, 0 24px 60px rgba(0,0,0,0.45), inset 0 0 0 1px #4b5563'
-            : '0 0 0 1px #3a3a3c, 0 30px 80px rgba(0,0,0,0.6), inset 0 0 0 1px #48484a',
+          border: 'none',
+          width: BASE_W,
+          height: IFRAME_H,
+          transform: `scale(${SCALE})`,
+          transformOrigin: 'top left',
+          display: 'block',
+          background: 'white',
+          pointerEvents: 'auto',
         }}
-      >
-        {IS_WEB && (
-          <div className="absolute left-3 top-2 z-10 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-          </div>
-        )}
-        {/* Screen */}
-        <div
-          className="relative overflow-hidden bg-white"
-          style={{
-            width: SCREEN_W,
-            height: SCREEN_H,
-            borderRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE),
-          }}
-          onWheel={(e) => {
-            if (scrollInsidePhone(e.deltaY)) {
-              e.preventDefault();
-              e.stopPropagation();
-            }
-          }}
-        >
-          {!IS_WEB && (
-            <div
-              className="absolute z-10 rounded-full bg-black"
-              style={{
-                width: Math.round(80 * SCALE),
-                height: Math.round(24 * SCALE),
-                top: Math.round(10 * SCALE),
-                left: '50%',
-                transform: 'translateX(-50%)',
-              }}
-            />
-          )}
-
-          <iframe
-            ref={iframeRef}
-            title="Screen preview"
-            scrolling="yes"
-            sandbox="allow-scripts allow-same-origin"
-            style={{
-              border: 'none',
-              width: BASE_W,
-              height: IFRAME_H,
-              transform: `scale(${SCALE})`,
-              transformOrigin: 'top left',
-              display: 'block',
-              background: 'white',
-            }}
-          />
+      />
 
           {/* Loading skeleton — shows until streaming begins */}
-          {!streaming && !error && (
-            <div
-              className="absolute inset-0 bg-white flex flex-col"
-              style={{ borderRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE), padding: Math.round(14 * SCALE) }}
-            >
+      {!streaming && !error && (
+        <div
+          className="absolute inset-0 bg-white flex flex-col"
+          style={{ padding: Math.round(14 * SCALE) }}
+        >
               {/* Status bar */}
               <div className="flex justify-between items-center mb-3" style={{ paddingTop: Math.round(6 * SCALE) }}>
                 <div className="rounded" style={{ height: Math.round(6 * SCALE), width: Math.round(28 * SCALE), background: '#e4e4e7' }} />
@@ -242,15 +204,12 @@ export default function StreamingMockFrame({
                 <span style={{ fontSize: Math.round(9 * SCALE), color: '#71717a', fontWeight: 600 }}>Loading interactive screen...</span>
                 <span style={{ fontSize: Math.round(8 * SCALE), color: '#a1a1aa' }}>You will be able to scroll and click once ready</span>
               </div>
-            </div>
-          )}
+        </div>
+      )}
 
           {/* Error state overlay */}
-          {error && (
-            <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-900/95"
-              style={{ borderRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE) }}
-            >
+      {error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-900/95">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="text-zinc-600">
                 <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
                 <path d="M10 6v4M10 13v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -262,56 +221,22 @@ export default function StreamingMockFrame({
               >
                 Retry
               </button>
-            </div>
-          )}
+        </div>
+      )}
 
           {/* Streaming progress bar — disappears when done */}
-          {!done && !error && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden z-20" style={{ borderBottomLeftRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE), borderBottomRightRadius: IS_WEB ? Math.round(10 * SCALE) : Math.round(28 * SCALE) }}>
-              <div
-                className="h-full bg-indigo-500 opacity-70"
-                style={{
-                  width: '40%',
-                  animation: 'stream-slide 1.4s ease-in-out infinite',
-                }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Volume buttons */}
-      {!IS_WEB && (
-        <>
-          {/* Volume buttons */}
-          {[Math.round(100 * SCALE), Math.round(140 * SCALE), Math.round(196 * SCALE)].map(
-            (top, i) => (
-              <div
-                key={i}
-                className="absolute rounded-full"
-                style={{
-                  left: -3,
-                  top,
-                  width: 3,
-                  height: i === 0 ? Math.round(30 * SCALE) : Math.round(52 * SCALE),
-                  background: '#3a3a3c',
-                }}
-              />
-            )
-          )}
-          {/* Power button */}
+      {!done && !error && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden z-20">
           <div
-            className="absolute rounded-full"
+            className="h-full bg-indigo-500 opacity-70"
             style={{
-              right: -3,
-              top: Math.round(148 * SCALE),
-              width: 3,
-              height: Math.round(68 * SCALE),
-              background: '#3a3a3c',
+              width: '40%',
+              animation: 'stream-slide 1.4s ease-in-out infinite',
             }}
           />
-        </>
+        </div>
       )}
+      </DeviceShell>
 
       <style>{`
         @keyframes stream-slide {
@@ -320,6 +245,6 @@ export default function StreamingMockFrame({
           100% { transform: translateX(250%); }
         }
       `}</style>
-    </div>
+    </>
   );
 }

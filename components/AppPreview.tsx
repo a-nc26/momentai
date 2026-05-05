@@ -128,7 +128,7 @@ function MobileSkeleton({ isBuilding }: { isBuilding: boolean }) {
               <span className="w-6 h-6 rounded-full border-2 border-zinc-700 border-t-indigo-400 animate-spin" />
               <div className="text-center space-y-1.5">
                 <p className="text-zinc-400 text-sm font-medium">Building your app…</p>
-                <p className="text-zinc-600 text-xs">Claude is generating real working code</p>
+                <p className="text-zinc-600 text-xs">Moment is generating real working code</p>
               </div>
               <div className="w-full space-y-2 mt-4">
                 <div className="h-10 bg-zinc-900 rounded-xl animate-pulse" />
@@ -167,7 +167,7 @@ function WebSkeleton({ isBuilding }: { isBuilding: boolean }) {
           <span className="w-6 h-6 rounded-full border-2 border-zinc-700 border-t-indigo-400 animate-spin" />
           <div className="text-center space-y-1.5">
             <p className="text-zinc-400 text-sm font-medium">Building your app…</p>
-            <p className="text-zinc-600 text-xs">Claude is generating real working code</p>
+            <p className="text-zinc-600 text-xs">Moment is generating real working code</p>
           </div>
         </>
       ) : (

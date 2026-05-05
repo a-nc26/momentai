@@ -2,13 +2,17 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useMomentaiStore } from '@/lib/store';
-import { DEMO_MAP } from '@/lib/demo';
+import { createFreshDemoMap } from '@/lib/demo';
 import { createProject } from '@/lib/projects';
 import { AppMap } from '@/lib/types';
+import { tryLogBuildUsageFromSsePayload } from '@/lib/build-usage-log';
+import { clearDemoEditConsumed } from '@/lib/demo-edit-session';
 
 interface LogEntry {
-  type: 'status' | 'progress' | 'error';
+  type: 'status' | 'progress' | 'error' | 'warning';
   message: string;
+  /** Server error detail when a fallback (compact / scaffold) runs */
+  detail?: string;
 }
 
 interface AnalysisData {
@@ -23,6 +27,20 @@ interface MappingData {
   moments: { id: string; label: string; type: string; journeyId: string }[];
   journeys: { id: string; name: string }[];
 }
+
+const DEMO_DESCRIPTION =
+  'An AI-powered fitness app called Pulse. Users complete a short fitness assessment to get a personalised training plan (Beginner, Intermediate, Advanced, or Athlete). Daily workouts are AI-generated based on energy and recovery. Progress is tracked with strength analytics and AI coaching insights. A nutrition module lets users log meals, get AI meal suggestions, and view recipes.';
+
+const DEMO_LOG_STEPS: { delay: number; msg: string }[] = [
+  { delay: 0,    msg: 'Analysing app description…' },
+  { delay: 1100, msg: 'Identifying user journeys…' },
+  { delay: 2400, msg: 'Mapping onboarding & fitness assessment flow…' },
+  { delay: 3800, msg: 'Mapping daily workout journey…' },
+  { delay: 5100, msg: 'Mapping progress & analytics journey…' },
+  { delay: 6200, msg: 'Mapping nutrition journey…' },
+  { delay: 7300, msg: 'Generating moment graph…' },
+  { delay: 8500, msg: 'Map generated — 30 moments across 4 journeys' },
+];
 
 const FRAMEWORK_ICONS: Record<string, string> = {
   'nextjs-app': 'N',
@@ -44,7 +62,17 @@ const MOMENT_TYPE_COLORS: Record<string, string> = {
 };
 
 export default function PromptScreen() {
-  const { setAppMap, setGenerating, isGenerating, setActiveProjectId, setBuiltAppUrl, setBuiltHtml, setBuildingApp } = useMomentaiStore();
+  const {
+    setAppMap,
+    setGenerating,
+    isGenerating,
+    setActiveProjectId,
+    setBuiltAppUrl,
+    setBuiltHtml,
+    setBuildingApp,
+    setMomentComponentCode,
+    setMomentBuildStatus,
+  } = useMomentaiStore();
   const [activeTab, setActiveTab] = useState<'describe' | 'upload'>('describe');
   const [platform, setPlatform] = useState<'mobile' | 'web'>('mobile');
   const [text, setText] = useState('');
@@ -55,6 +83,10 @@ export default function PromptScreen() {
   const [charsGenerated, setCharsGenerated] = useState(0);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [mappingData, setMappingData] = useState<MappingData | null>(null);
+  /** Two-phase create: model returns follow-up questions before /api/generate. */
+  const [clarifyQuestions, setClarifyQuestions] = useState<string[] | null>(null);
+  const [clarifyAnswers, setClarifyAnswers] = useState<string[]>([]);
+  const [isClarifyLoading, setIsClarifyLoading] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -62,22 +94,79 @@ export default function PromptScreen() {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
+  /** Same pipeline as Build & Share: `/api/build-app` streams SSE, not JSON. */
   const triggerBuild = async (appMap: AppMap) => {
+    const screens = appMap.moments.filter((m) => !m.parentMomentId);
     setBuildingApp(true);
+    for (const m of screens) {
+      setMomentBuildStatus(m.id, 'building');
+    }
     try {
       const res = await fetch('/api/build-app', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appMap }),
       });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.url) setBuiltAppUrl(data.url);
-      if (data.html) setBuiltHtml(data.html);
+      if (!res.ok || !res.body) return;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+        }
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const payload = JSON.parse(line.slice(6)) as Record<string, unknown>;
+            if (payload.status === 'usage') {
+              tryLogBuildUsageFromSsePayload(payload);
+            } else if (payload.status === 'done' && payload.componentCode && payload.momentId) {
+              setMomentComponentCode(String(payload.momentId), String(payload.componentCode));
+            } else if (payload.status === 'error' && payload.momentId) {
+              setMomentBuildStatus(String(payload.momentId), 'error');
+            }
+          } catch {
+            /* skip malformed line */
+          }
+        }
+        if (done) {
+          buffer += decoder.decode();
+          const tail = buffer.trim();
+          if (tail) {
+            for (const line of tail.split('\n')) {
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const payload = JSON.parse(line.slice(6)) as Record<string, unknown>;
+                if (payload.status === 'usage') {
+                  tryLogBuildUsageFromSsePayload(payload);
+                } else if (payload.status === 'done' && payload.componentCode && payload.momentId) {
+                  setMomentComponentCode(String(payload.momentId), String(payload.componentCode));
+                } else if (payload.status === 'error' && payload.momentId) {
+                  setMomentBuildStatus(String(payload.momentId), 'error');
+                }
+              } catch {
+                /* skip */
+              }
+            }
+          }
+          break;
+        }
+      }
     } catch {
-      // silently fail — user can rebuild manually
+      /* user can run Build & Share from the workspace */
     } finally {
       setBuildingApp(false);
+      const { appMap, setMomentBuildStatus: setStatus } = useMomentaiStore.getState();
+      if (appMap) {
+        for (const m of appMap.moments) {
+          if (m.buildStatus === 'building') setStatus(m.id, 'error');
+        }
+      }
     }
   };
 
@@ -88,6 +177,28 @@ export default function PromptScreen() {
 
   const addLog = (entry: LogEntry) => {
     setLogs((prev) => [...prev, entry]);
+  };
+
+  const handleDemoFlow = async () => {
+    if (isGenerating) return;
+    setText(DEMO_DESCRIPTION);
+    setError('');
+    setLogs([]);
+    setCharsGenerated(0);
+    setGenerating(true);
+
+    let prev = 0;
+    for (const step of DEMO_LOG_STEPS) {
+      await new Promise<void>((r) => setTimeout(r, step.delay - prev));
+      prev = step.delay;
+      setLogs((l) => [...l, { type: 'status', message: step.msg }]);
+    }
+
+    const fresh = createFreshDemoMap();
+    clearDemoEditConsumed();
+    setAppMap(fresh);
+    saveNewProject(fresh);
+    setGenerating(false);
   };
 
   // ── Stream reader (shared between describe + upload) ──────────────────────
@@ -101,59 +212,119 @@ export default function PromptScreen() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let gotResult = false;
+    let gotError = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    const handleEvent = (event: Record<string, unknown>) => {
+      if (event.type === 'status') {
+        addLog({ type: 'status', message: String(event.message ?? '') });
+      } else if (event.type === 'warning') {
+        addLog({
+          type: 'warning',
+          message: typeof event.message === 'string' ? event.message : 'Warning',
+          detail: typeof event.detail === 'string' ? event.detail : undefined,
+        });
+      } else if (event.type === 'progress') {
+        setCharsGenerated(typeof event.chars === 'number' ? event.chars : 0);
+      } else if (event.type === 'analysis') {
+        setAnalysisData(event as unknown as AnalysisData);
+      } else if (event.type === 'mapping') {
+        setMappingData(event as unknown as MappingData);
+      } else if (event.type === 'error') {
+        gotError = true;
+        const msg = typeof event.message === 'string' ? event.message : 'Generation failed';
+        setError(msg);
+        addLog({ type: 'error', message: msg });
+      } else if (event.type === 'result') {
+        const appMap = event.appMap as AppMap | undefined;
+        if (!appMap?.moments || !appMap.journeys) {
+          gotError = true;
+          setError('Invalid map from server — try again');
+          addLog({ type: 'error', message: 'Server sent an incomplete app map.' });
+          return;
+        }
+        gotResult = true;
+        addLog({
+          type: 'status',
+          message: `Map generated — ${appMap.moments.length} moments across ${appMap.journeys.length} journeys`,
+        });
+        setAppMap(appMap);
+        saveNewProject(appMap);
+        triggerBuild(appMap);
+      }
+    };
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
+    const processLine = (line: string) => {
+      const t = line.trim();
+      if (!t.startsWith('data:')) return;
+      const json = t.slice(5).replace(/^\s*/, '');
+      if (!json) return;
+      try {
+        handleEvent(JSON.parse(json) as Record<string, unknown>);
+      } catch {
+        addLog({ type: 'error', message: 'Could not parse a server message (truncated stream?).' });
+      }
+    };
 
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const event = JSON.parse(line.slice(6));
-          if (event.type === 'status') {
-            addLog({ type: 'status', message: event.message });
-          } else if (event.type === 'progress') {
-            setCharsGenerated(event.chars);
-          } else if (event.type === 'analysis') {
-            setAnalysisData(event as AnalysisData);
-          } else if (event.type === 'mapping') {
-            setMappingData(event as MappingData);
-          } else if (event.type === 'error') {
-            setError(event.message);
-            addLog({ type: 'error', message: event.message });
-          } else if (event.type === 'result') {
-            addLog({
-              type: 'status',
-              message: `Map generated — ${event.appMap.moments?.length ?? 0} moments across ${event.appMap.journeys?.length ?? 0} journeys`,
-            });
-            setAppMap(event.appMap);
-            saveNewProject(event.appMap);
-            triggerBuild(event.appMap);
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+        }
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          processLine(line);
+        }
+        if (done) {
+          buffer += decoder.decode();
+          const tail = buffer.trim();
+          if (tail) {
+            for (const line of tail.split('\n')) {
+              processLine(line);
+            }
           }
-        } catch {
-          // malformed SSE line, skip
+          break;
         }
       }
+    } catch {
+      setError('Stream interrupted — check your connection');
+      addLog({ type: 'error', message: 'Stream interrupted.' });
+      gotError = true;
+    }
+
+    if (!gotResult && !gotError) {
+      setError('No app map was received. Try generating again.');
+      addLog({
+        type: 'error',
+        message:
+          'Connection closed before the map arrived — nothing was saved. If this keeps happening, try a shorter description.',
+      });
     }
   }
 
-  // ── Describe → generate ───────────────────────────────────────────────────
-  const handleGenerate = async () => {
-    const trimmed = text.trim();
-    if (!trimmed || isGenerating) return;
-    setError('');
-    setLogs([]);
-    setCharsGenerated(0);
+  function buildEnrichedDescription(base: string, questions: string[], answers: string[]): string {
+    const lines = [base.trim()];
+    const blocks = questions
+      .map((q, i) => {
+        const a = (answers[i] ?? '').trim();
+        return a ? `• ${q}\n  ${a}` : null;
+      })
+      .filter((b): b is string => !!b);
+    if (blocks.length > 0) {
+      lines.push('', 'Clarifications:', ...blocks);
+    }
+    return lines.join('\n');
+  }
+
+  const runGenerateWithDescription = async (descriptionToGenerate: string) => {
     setGenerating(true);
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: trimmed, platform }),
+        body: JSON.stringify({ description: descriptionToGenerate, platform }),
       });
       await readStream(res);
     } catch {
@@ -161,6 +332,63 @@ export default function PromptScreen() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  // ── Describe → optional clarify → generate ────────────────────────────────
+  const handleGenerate = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || isGenerating || isClarifyLoading || clarifyQuestions) return;
+    setError('');
+    setLogs([]);
+    setCharsGenerated(0);
+
+    setIsClarifyLoading(true);
+    try {
+      const res = await fetch('/api/clarify-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: trimmed, platform }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(typeof data?.error === 'string' ? data.error : 'Could not review your brief — try again.');
+        return;
+      }
+      if (data?.needsInput === true && Array.isArray(data.questions) && data.questions.length > 0) {
+        setClarifyQuestions(data.questions);
+        setClarifyAnswers(data.questions.map(() => ''));
+        addLog({
+          type: 'status',
+          message: 'A few quick questions will help us build a stronger map for you.',
+        });
+        return;
+      }
+      const brief = typeof data?.brief === 'string' && data.brief.trim() ? data.brief.trim() : trimmed;
+      await runGenerateWithDescription(brief);
+    } catch {
+      setError('Something went wrong — check your connection and try again');
+    } finally {
+      setIsClarifyLoading(false);
+    }
+  };
+
+  const handleClarifyContinue = async () => {
+    if (!clarifyQuestions || clarifyQuestions.length === 0) return;
+    const trimmed = text.trim();
+    const enriched = buildEnrichedDescription(trimmed, clarifyQuestions, clarifyAnswers);
+    setClarifyQuestions(null);
+    setClarifyAnswers([]);
+    setError('');
+    setLogs([]);
+    setCharsGenerated(0);
+    addLog({ type: 'status', message: 'Generating your app map with your answers…' });
+    await runGenerateWithDescription(enriched);
+  };
+
+  const handleClarifyCancel = () => {
+    setClarifyQuestions(null);
+    setClarifyAnswers([]);
+    setError('');
   };
 
   // ── Upload → analyze ──────────────────────────────────────────────────────
@@ -277,32 +505,88 @@ export default function PromptScreen() {
               placeholder="e.g. A fitness app where users track workouts, get AI-generated plans, and see progress over time. Includes social features and a nutrition tracker."
               value={text}
               onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
-              disabled={isGenerating}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !clarifyQuestions) {
+                  handleGenerate();
+                }
+              }}
+              disabled={isGenerating || isClarifyLoading}
             />
+
+            {clarifyQuestions && clarifyQuestions.length > 0 && (
+              <div className="space-y-3 rounded-xl border border-indigo-500/25 bg-indigo-500/5 px-4 py-3">
+                <p className="text-indigo-200/90 text-xs font-medium">
+                  A few details help us build a stronger map:
+                </p>
+                {clarifyQuestions.map((q, i) => (
+                  <div key={i} className="space-y-1">
+                    <label className="text-zinc-400 text-xs block">{q}</label>
+                    <input
+                      type="text"
+                      value={clarifyAnswers[i] ?? ''}
+                      onChange={(e) => {
+                        const next = [...clarifyAnswers];
+                        next[i] = e.target.value;
+                        setClarifyAnswers(next);
+                      }}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-indigo-500/50"
+                      placeholder="Your answer"
+                      disabled={isGenerating}
+                    />
+                  </div>
+                ))}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleClarifyContinue}
+                    disabled={isGenerating}
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white h-10 text-sm font-semibold rounded-lg"
+                  >
+                    Generate with your answers
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClarifyCancel}
+                    disabled={isGenerating}
+                    className="px-4 h-10 text-sm text-zinc-400 border border-zinc-700 rounded-lg hover:border-zinc-500"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
 
             {error && <p className="text-red-400 text-sm">{error}</p>}
 
-            <button
-              onClick={handleGenerate}
-              disabled={!text.trim() || isGenerating}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white h-12 text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2.5"
-            >
-              {isGenerating ? (
-                <>
-                  <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  Generating your app map…
-                </>
-              ) : (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  </svg>
-                  Generate Journey Map
-                </>
-              )}
-            </button>
-            <p className="text-zinc-700 text-xs text-center">⌘ + Enter to generate</p>
+            {!clarifyQuestions && (
+              <button
+                onClick={handleGenerate}
+                disabled={!text.trim() || isGenerating || isClarifyLoading}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white h-12 text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2.5"
+              >
+                {isClarifyLoading ? (
+                  <>
+                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    Reviewing your brief…
+                  </>
+                ) : isGenerating ? (
+                  <>
+                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    Generating your app map…
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                    Generate Journey Map
+                  </>
+                )}
+              </button>
+            )}
+            {!clarifyQuestions && (
+              <p className="text-zinc-700 text-xs text-center">⌘ + Enter to generate</p>
+            )}
           </div>
         )}
 
@@ -507,23 +791,32 @@ export default function PromptScreen() {
                 <span className="text-[11px] text-zinc-600 font-mono">{charsGenerated.toLocaleString()} chars</span>
               )}
             </div>
-            <div className="px-4 py-3 space-y-1.5 max-h-48 overflow-y-auto font-mono text-xs">
+            <div className="px-4 py-3 space-y-1.5 max-h-64 overflow-y-auto font-mono text-xs">
               {logs.map((log, i) => (
                 <div key={i} className="flex items-start gap-2">
                   <span className={
                     log.type === 'error' ? 'text-red-500' :
+                    log.type === 'warning' ? 'text-amber-500' :
                     i === logs.length - 1 && isGenerating ? 'text-indigo-400' :
                     'text-emerald-500'
                   }>
-                    {log.type === 'error' ? '✗' : i === logs.length - 1 && isGenerating ? '›' : '✓'}
+                    {log.type === 'error' ? '✗' : log.type === 'warning' ? '!' : i === logs.length - 1 && isGenerating ? '›' : '✓'}
                   </span>
-                  <span className={
-                    log.type === 'error' ? 'text-red-400' :
-                    i === logs.length - 1 && isGenerating ? 'text-zinc-300' :
-                    'text-zinc-500'
-                  }>
-                    {log.message}
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <span className={
+                      log.type === 'error' ? 'text-red-400' :
+                      log.type === 'warning' ? 'text-amber-200/90' :
+                      i === logs.length - 1 && isGenerating ? 'text-zinc-300' :
+                      'text-zinc-500'
+                    }>
+                      {log.message}
+                    </span>
+                    {log.detail && (
+                      <p className="mt-1 text-[10px] leading-snug text-zinc-500 whitespace-pre-wrap break-words pl-0 border-l border-zinc-700 pl-2">
+                        {log.detail}
+                      </p>
+                    )}
+                  </div>
                 </div>
               ))}
               {isGenerating && charsGenerated > 0 && (
@@ -549,13 +842,13 @@ export default function PromptScreen() {
             </div>
 
             <button
-              onClick={() => { setAppMap(DEMO_MAP); saveNewProject(DEMO_MAP); }}
+              onClick={handleDemoFlow}
               disabled={isGenerating}
               className="w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 disabled:opacity-40 text-zinc-300 h-12 text-sm font-medium rounded-xl transition-all flex items-center justify-center gap-2.5"
             >
               <span className="text-base">⚡</span>
               Pulse — AI Fitness Demo
-              <span className="text-zinc-600 text-xs ml-1">15 screens · 4 journeys</span>
+              <span className="text-zinc-600 text-xs ml-1">30 moments · 4 journeys</span>
             </button>
           </>
         )}

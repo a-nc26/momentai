@@ -12,8 +12,8 @@ const FEATURES = [
         <rect x="11" y="11" width="7" height="7" rx="2" fill="currentColor" opacity="0.3" />
       </svg>
     ),
-    title: 'Journey Map',
-    desc: 'Describe your app and get an interactive flow map of every screen and step — generated in seconds.',
+    title: 'Journeys',
+    desc: 'Named user flows that define how your product works, not just how it looks.',
   },
   {
     icon: (
@@ -24,8 +24,8 @@ const FEATURES = [
         <rect x="7.5" y="11" width="3" height="1.5" rx="0.75" fill="currentColor" opacity="0.5" />
       </svg>
     ),
-    title: 'Live Mockups',
-    desc: 'Every Moment renders a pixel-perfect mobile screen. Loading, error, and empty states included.',
+    title: 'Moments',
+    desc: 'Each screen is a visible, editable moment with intent, state, and connections.',
   },
   {
     icon: (
@@ -35,8 +35,8 @@ const FEATURES = [
         <circle cx="10" cy="10" r="1.5" fill="currentColor" />
       </svg>
     ),
-    title: 'Edit Moments',
-    desc: 'Change any screen with plain English. Add new steps, rewire flows — the map updates automatically.',
+    title: 'Build From Structure',
+    desc: 'Generate UI and logic inside the AppMap, then zoom from overview to screen-level detail.',
   },
   {
     icon: (
@@ -44,8 +44,8 @@ const FEATURES = [
         <path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
-    title: 'AI-Powered Flows',
-    desc: 'AI moments show you the exact prompt, inputs, outputs, and model call — ready for engineering handoff.',
+    title: 'AI With Precision',
+    desc: 'Edit any exact moment with plain English. Every change is intentional, traceable, and reversible.',
   },
 ];
 
@@ -59,12 +59,14 @@ export default function LandingPage() {
           <div className="w-2 h-2 rounded-full bg-indigo-500" />
           <span className="text-white font-semibold text-sm tracking-tight">Momentum</span>
         </div>
-        <Link
-          href="/app"
-          className="text-sm text-zinc-400 hover:text-white transition-colors"
-        >
-          Open App →
-        </Link>
+        <div className="flex items-center gap-4 text-sm">
+          <Link href="/app?demo=true" className="text-zinc-500 hover:text-white transition-colors">
+            Demo
+          </Link>
+          <Link href="/app" className="text-zinc-400 hover:text-white transition-colors">
+            Builder
+          </Link>
+        </div>
       </nav>
 
       {/* Hero */}
@@ -80,29 +82,42 @@ export default function LandingPage() {
         <div className="relative max-w-2xl mx-auto">
           <div className="inline-flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-full px-4 py-1.5 text-xs text-zinc-400 mb-8">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            Powered by Claude Sonnet &amp; Haiku
+            Structural AI Builder
           </div>
 
           <h1 className="text-5xl font-bold tracking-tight leading-tight mb-6">
-            Turn an idea into a{' '}
-            <span className="text-indigo-400">visual app map</span>
-            {' '}in seconds
+            Build apps with{' '}
+            <span className="text-indigo-400">structure first</span>
+            , not prompt-and-forget
           </h1>
 
-          <p className="text-zinc-400 text-lg leading-relaxed mb-10 max-w-lg mx-auto">
-            Describe your app. Momentum generates every screen, flow, and AI integration — with live mockups you can edit with plain English.
+          <p className="text-zinc-400 text-lg leading-relaxed mb-4 max-w-3xl mx-auto">
+            Momentum turns your idea into an AppMap of Journeys and Moments, then builds screens and logic inside that map so you can see, navigate, and edit your product with confidence.
+          </p>
+          <p className="text-zinc-500 text-sm leading-relaxed mb-10 max-w-2xl mx-auto">
+            Generate the map. Build from structure. Pinpoint any change.
           </p>
 
-          <Link
-            href="/app"
-            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-6 py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30"
-          >
-            Start Building
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M3 7h8M7 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </Link>
-          <p className="text-zinc-600 text-xs mt-4">No account needed · Free to try</p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link
+              href="/app"
+              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-6 py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30"
+            >
+              Start with the AppMap
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M3 7h8M7 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Link>
+            <Link
+              href="/app?demo=true"
+              className="inline-flex items-center gap-2 border border-zinc-700 hover:border-zinc-500 text-zinc-200 hover:text-white font-medium text-sm px-6 py-3 rounded-xl transition-all"
+            >
+              See interactive demo
+            </Link>
+          </div>
+          <p className="text-zinc-600 text-xs mt-4">
+            Full builder needs an access code · Demo is open to everyone
+          </p>
         </div>
       </section>
 

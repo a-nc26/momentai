@@ -1,461 +1,829 @@
-# Momentum Technical Vision
-**Date:** March 14, 2026  
-**Purpose:** Product and engineering source of truth for the long-term system
+# Momentum — Vision & Technical Purpose
 
-## 1. Product Thesis
+**Version:** 2.2  
+**Updated:** April 11, 2026  
+**Purpose:** Long-term product intent, architecture philosophy, and invariants
 
-Momentum is an app builder where the primary artifact is not just generated UI or generated code. The primary artifact is a **living application map**.
+**Alignment:** Strategic positioning, audience (*architectural builders*), and roadmap live in `PRD.md` **Part I** (source of truth). This file states how Momentum implements that strategy in product philosophy and technical invariants.
 
-The first prompt should produce two things at once:
+---
 
-1. A runnable app
-2. A structured map of the journeys and moments that make the app work
+## True Purpose
 
-The map is the key product insight. It gives every part of the app an address, so edits can be scoped to a specific moment instead of re-prompting an undifferentiated whole.
+Momentum exists to solve one problem:
 
-## 2. Core Product Promise
+**Making AI-built software safe to edit as it grows.**
 
-Momentum should let a builder:
+Not "generate faster."  
+Not "prettier first drafts."  
+Not "easier prototyping."
 
-1. Describe a product in plain language
-2. Receive a visual map of the product's flows
-3. Click any node in that map to inspect, edit, and launch that part of the app
-4. Apply natural-language changes to a specific moment
-5. See the running app update in a controlled, explainable way
-6. Eventually connect live user behavior back to the exact nodes that need attention
+**Controlled iteration at scale.**
 
-The long-term promise is:
+---
 
-`Prompt -> map -> runnable app -> targeted edits -> live learning -> targeted fixes`
+## The Founding Insight
 
-## 3. Product Layers
+AI can produce strong first versions. The breakdown happens during sustained iteration.
 
-### Layer 1: Canvas
+Without explicit structure:
+- Every change is a guess across an undifferentiated whole
+- The model has no stable notion of boundaries
+- Unintended consequences compound
+- Trust erodes, projects stall
 
-The Canvas is the authoring surface.
+Momentum's response:
+- Make structure explicit from the first prompt
+- Give every screen and flow a stable identity
+- Make that structure visual and editable
+- Scope changes to specific parts instead of re-rolling everything
 
-Responsibilities:
+---
 
-- Visualize journeys, moments, and edges
-- Show branching structure
-- Provide a stable place to inspect specific moments
-- Let the user edit flows without touching raw code
-- Eventually become the control surface for analytics and debugging
+## Vision Statement
 
-The Canvas is not documentation. It is the operating interface for the app.
+From one prompt, Momentum should produce:
 
-### Layer 2: Runtime
+1. A runnable application
+2. A living graph of every flow
 
-The Runtime executes the map as a real application.
+Over time, that graph becomes the single place where teams:
+- **Build** (generate and edit)
+- **Run** (execute and deploy)
+- **Debug** (inspect and fix)
+- **Learn** (observe behavior and optimize)
 
-Responsibilities:
+Structure, execution, and intelligence share one model.
 
+---
+
+## The Three-Layer Architecture
+
+### Layer 1 — Canvas (Structure & Authoring)
+
+**Purpose:** Make every part of the app addressable and visible.
+
+**Responsibilities:**
+- Visualize journeys, moments, edges, branches
+- Provide stable selection targets for editing
+- Show relationships and dependencies
+- Eventually become the control surface for debugging and analytics
+
+**Not just documentation.** The operating interface for the app.
+
+**Key principle:** If you can't see it on the graph, you can't reliably change it.
+
+---
+
+### Layer 2 — Runtime (Execution)
+
+**Purpose:** Execute the graph as a real application.
+
+**Responsibilities:**
 - Interpret structured screen definitions
-- Hold session/app state
-- Execute navigation and branching
-- Run auth/data/AI behaviors in a safe, deterministic way in early versions
-- Eventually support real backend bindings and production deployment
+- Hold and manage application state
+- Execute navigation, branching, and effects
+- Run auth/data/AI behaviors safely
+- Provide shareable, testable app output
+- Eventually support production deployment
+
+**Evolution path:**
+
+**V1 (Current):** Interpreter-based prototype runtime
+- Session state only
+- Deterministic stubs for AI/data/auth
+- Constrained component/action schema
+- Mobile + web shells
+
+**V2 (6-12 months):** Shareable testbed runtime
+- Stable share links
+- Richer state modeling
+- Better branch/navigation support
+- Revision tracking
+
+**V3 (12-24 months):** Production surface
+- Backend integrations (auth providers, DBs, APIs)
+- External deployment targets
+- Environment management
+- Code export option
+
+**Key principle:** The graph should be runnable, not just documentative.
+
+---
+
+### Layer 3 — Intelligence (Learning & Optimization)
+
+**Purpose:** Connect observed behavior back to the graph.
+
+**Responsibilities:**
+- Instrument runtime events (pageviews, clicks, drop-offs, errors)
+- Map behavior to moments and edges
+- Detect friction, loops, abandonment
+- Surface findings on the graph itself
+- Suggest targeted fixes
+- Eventually support experiments and A/B tests at node level
+
+**Why this matters strategically:**
+
+Traditional analytics: "Signup flow has 40% drop-off somewhere."  
+Graph-native analytics: "Moment `create-account` has 40% drop-off after email field. Suggested fix: simplify form to name + email only."
+
+The insight resolves to a **specific node you can click and edit**.
+
+**Key principle:** Learning should point to what to change, not just what's broken.
+
+---
+
+## Object Model (The Contract)
+
+`AppMap` is the platform contract across all layers.
+
+### Structure
+
+```typescript
+AppMap {
+  // Metadata
+  appName: string
+  appDescription: string
+  appPlatform: 'mobile' | 'web'
+  demoMode?: boolean
+  
+  // Runtime contract
+  runtimeVersion: 1
+  stateSchema: StateField[]
+  initialState: Record<string, any>
+  
+  // Graph structure
+  journeys: Journey[]
+  moments: Moment[]
+  edges: Edge[]
+}
+
+Journey {
+  id: string
+  name: string
+  description: string
+}
+
+Moment {
+  id: string
+  journeyId: string
+  type: 'ui' | 'ai' | 'data' | 'auth'
+  label: string
+  description: string
+  preview: string
+  position: { x: number, y: number }
+  
+  // Branching
+  branchOf?: string         // Parent moment ID
+  parentMomentId?: string   // For sub-steps (not implemented yet)
+  
+  // Runtime definitions
+  screenSpec?: RuntimeScreenSpec
+  componentCode?: string    // Generated React
+  buildStatus?: 'idle' | 'building' | 'done' | 'error'
+  
+  // AI moments
+  promptTemplate?: string
+  responseKey?: string
+}
 
-Important distinction:
+Edge {
+  id: string
+  source: string  // Moment ID
+  target: string  // Moment ID
+  label?: string
+  condition?: string
+}
 
-- **Current v1 reality:** mobile-first, stateful prototype runtime with deterministic stub behavior
-- **Long-term vision:** production-grade runtime or code-export system that can serve real users
+RuntimeScreenSpec {
+  title?: string
+  subtitle?: string
+  eyebrow?: string
+  progress?: { current: number, total: number }
+  components: Component[]
+  actions: Action[]
+}
+```
 
-### Layer 3: Intelligence
+### Design Invariants
 
-The Intelligence Layer connects observed behavior back to the map.
+1. `AppMap` is the source of truth (not derived, not cached)
+2. Every moment has a stable `id` (persists across edits)
+3. Edges are directed (source → target)
+4. `branchOf` moments are optional (hidden by default)
+5. Runtime state is separate from graph structure
 
-Responsibilities:
+**If a feature can't map to `AppMap`, it probably shouldn't be first-class.**
 
-- Track behavior at the moment and journey level
-- Surface friction, drop-off, and abnormal flow behavior on the map itself
-- Help the user identify what to change next
-- Eventually propose edits, experiments, and safe refactors
+---
 
-## 4. System Model
+## Editing Philosophy
 
-Momentum is built around a structured app graph.
+Momentum is a scalpel, not a slot machine.
 
-### Core domain objects
+### Core Principles
 
-#### Journey
+**1. Local-first edits**
+- Changes target one moment
+- Model receives scoped context
+- Output updates that moment only
 
-A named user flow.
+**2. Explicit downstream impact**
+- System detects affected moments
+- User sees what might change
+- Propagation is opt-in (or reviewable)
 
-Examples:
+**3. Transparent execution**
+- No magic global fixes
+- Show what changed and why
+- Provide undo/revert paths
 
-- Onboarding
-- Add Expense
-- Checkout
-- Track Progress
+**4. Explainable decisions**
+- System explains scope
+- Logs show fallback reasons
+- Errors include actionable next steps
 
-#### Moment
+### What This Means in Practice
 
-A single node in a journey. A moment is the smallest editable unit in the product.
+Some edits touch only one node.  
+→ System updates that node, done.
 
-A moment can represent:
+Some edits update downstream.  
+→ System flags those moments, explains why, offers refresh.
 
-- A screen or form
-- An auth step
-- An AI-powered step
-- A data operation
+Some edits require rewiring edges.  
+→ System shows new connections, asks for confirmation.
 
-Current types:
+Some edits need app-level state changes.  
+→ System warns, shows affected moments, validates schema.
 
-- `ui`
-- `auth`
-- `ai`
-- `data`
+**The user always understands which case happened.**
 
-#### Edge
+---
 
-A directed connection between moments.
+## Runtime Design Philosophy
 
-Edges express:
+### Interpreter vs. Codegen Tradeoff
 
-- Sequential progression
-- Branching paths
-- Cross-journey movement
-- Labeled transitions
+**Interpreter (current path):**
 
-#### AppMap
+Pros:
+- Instant updates when map changes
+- Safer constraints (can't execute arbitrary code)
+- Easier editing (change spec, not generated code)
+- Faster iteration cycles
 
-The canonical product structure.
+Cons:
+- Limited to supported component/action vocabulary
+- Harder to extend with custom logic
+- Deployment requires runtime server (not pure static)
 
-It contains:
+**Codegen (future option):**
 
-- app metadata
-- journeys
-- moments
-- edges
-- runtime metadata
+Pros:
+- Full ownership (export real codebase)
+- Unlimited extensibility
+- Standard deployment (Vercel, Netlify, etc.)
 
-In the long-term architecture, `AppMap` is not just a canvas artifact. It is the contract between generation, editing, runtime, and intelligence.
+Cons:
+- Generated code can drift from map
+- Editing requires regeneration
+- Merge conflicts in exported code
 
-## 5. Current v1 Architecture
+**Recommended hybrid path:**
+- V1-V2: Interpreter for reliability and speed
+- V2-V3: Add code export option (opt-in)
+- Long-term: Both modes coexist (interpreter for iteration, export for ownership)
 
-Momentum now has an early but real mobile runtime path.
+### State Management Philosophy
 
-### Current v1 scope
+**App-level state:**
+- Defined in `stateSchema` (typed fields)
+- Initialized from `initialState`
+- Shared across all moments
 
-- Mobile-first only
-- Canvas stays as the primary map UI
-- Each moment can contain a structured `screenSpec`
-- `Launch App` runs a real React-based runtime, not just HTML iframes
-- State is held in a session store
-- Auth/data/AI moments are still prototype-safe and deterministic
-- Natural-language edits can patch structured runtime data
+**Session state:**
+- Holds current values during runtime
+- Persists across navigation
+- Can be saved to backend for continuity
 
-### Current runtime primitives
+**Moment-local state:**
+- Not supported in V1 (everything is app-level)
+- Future: scoped state for complex screens
 
-App-level runtime fields:
+**Key rule:** State changes are explicit (effects, actions) — no hidden mutations.
 
-- `runtimeVersion`
-- `stateSchema`
-- `initialState`
+---
 
-Moment-level runtime fields:
+## Intelligence Layer (Future Vision)
 
-- `screenSpec`
-- `actions`
-- `components`
+### What It Should Do
 
-Supported v1 components:
+Track behavior at moment/edge granularity:
+- Which moments users reach
+- Which buttons they tap
+- Where they drop off
+- Which paths they loop through
+- Where errors happen
 
-- `hero`
-- `input`
-- `choice-cards`
-- `chip-group`
-- `notice`
-- `summary-card`
-- `stats-grid`
-- `list`
-- `spacer`
+Surface findings **on the graph**:
+- Amber badge: "40% drop-off"
+- Red badge: "High error rate"
+- Green badge: "High conversion"
 
-Supported v1 actions:
+Provide actionable insights:
+- "Users abandon at moment `create-account` after email field"
+- "Suggested fix: simplify to name + email only (password later)"
 
-- `navigate`
-- `branch`
-- `back`
+### Why This Is the Moat
 
-This is intentionally constrained. The goal is not arbitrary generation. The goal is a reliable executable prototype system.
+Traditional analytics: data in dashboards, fixes require guessing.  
+Graph-native analytics: data on nodes, fixes are one click away.
 
-## 6. Why The Structured Runtime Matters
+That tight loop — observe → identify → edit → validate — is defensible if we ship it first and do it well.
 
-The old HTML-mock path was useful for visual prototyping, but it could not deliver the real product promise.
+### Technical Approach (Future)
 
-Problems with HTML-only generation:
+**Instrumentation:**
+- Runtime emits events (moment_viewed, action_clicked, error_occurred)
+- Events include: moment ID, journey ID, timestamp, user ID, session ID
 
-- interactions are not trustworthy
-- state does not persist meaningfully
-- buttons require brittle click-guessing
-- downstream screens cannot reliably reflect prior user choices
-- edits mostly regenerate presentation, not app behavior
+**Aggregation:**
+- Backend collects events
+- Aggregates by moment/edge/journey
+- Computes funnels, conversion rates, drop-off points
 
-The structured runtime fixes that by making nodes executable.
+**Display:**
+- Canvas overlays badges on nodes
+- Click badge → see detail panel
+- Suggested fixes appear as AI-generated prompts
+- User can apply fix as scoped edit
 
-Instead of:
+**Feedback loop:**
+- Edit → deploy → observe → new data
+- Continuous optimization cycle
 
-- node -> HTML mock
+---
 
-Momentum should be:
+## What Must Stay True
 
-- node -> structured screen definition + state dependencies + actions + transitions
+Regardless of implementation choices, these invariants must hold:
 
-That makes it possible for the app to actually run from the graph.
+### Invariant 1: Graph is Central
 
-## 7. Long-Term Technical Architecture
+The map is not decoration. It's the product core.
 
-The full platform can be thought of as five systems.
+Every meaningful capability should attach to the graph:
+- Generation writes it
+- Canvas renders it
+- Runtime executes from it
+- Editing updates it
+- Intelligence annotates it
 
-### 7.1 Generation System
+### Invariant 2: Execution Couples to Structure
 
-Input:
+Runtime behavior should resolve back to graph structure.
 
-- plain-language app description
+When something breaks, the fix targets a moment or edge, not "somewhere in the code."
 
-Output:
+### Invariant 3: Editing Stays Scoped
 
-- normalized `AppMap`
-- journeys
-- moments
-- edges
-- runtime schema
-- screen specs
+Changes target explicit boundaries (moments).
 
-Responsibilities:
+Downstream impact is transparent, not discovered post-facto.
 
-- infer journeys
-- infer moment boundaries
-- assign types
-- generate layout
-- generate runnable runtime specs
-- normalize unsupported output into a safe schema
+### Invariant 4: Learning Resolves to Nodes
 
-### 7.2 Runtime Compiler / Interpreter
+Analytics should answer: "Which moment should change first?"
 
-Input:
+Not: "Here's aggregate data, good luck finding the issue."
 
-- `AppMap`
+### Invariant 5: Fear Decreases with Size
 
-Output:
+As apps grow, iteration confidence should increase (or stay stable), not decrease.
 
-- runnable application session
+This is the opposite of current AI builders.
 
-Responsibilities:
+---
 
-- initialize state
-- resolve current moment
-- render the active screen
-- enforce action rules
-- apply effects
-- branch on state
-- preserve navigation history
+## Long-Term Product Scenarios
 
-Two possible long-term models:
+### Scenario A: Full-Stack Platform
 
-1. **Interpreter model**
-   - runtime renders directly from spec
-   - easier editing, safer constraints, faster iteration
+Momentum owns:
+- Generation
+- Editing
+- Runtime
+- Deployment
+- Analytics
 
-2. **Codegen model**
-   - runtime exports a true codebase
-   - better for deployment, extension, and ownership
+User never leaves Momentum from idea to production.
 
-Recommended path:
+**Pros:** Tight integration, full control, strong lock-in  
+**Cons:** Large build surface, infrastructure costs
 
-- v1/v2: interpreter-first
-- later: exportable codegen on top of the same graph model
+### Scenario B: Integration Hub
 
-### 7.3 Edit System
+Momentum owns:
+- Generation
+- Editing
+- Graph model
 
-Input:
+Integrates with:
+- Vercel/Netlify (deploy)
+- Supabase/Firebase (backend)
+- PostHog/Amplitude (analytics)
 
-- selected moment
-- current graph context
-- natural-language edit request
+**Pros:** Faster shipping, lower infra cost  
+**Cons:** Weaker moat, dependency on partners
 
-Output:
+### Scenario C: Hybrid (Likely Path)
 
-- patch to moment
-- optional graph rewiring
-- optional app-level runtime schema changes
-- optional downstream impact list
+Momentum owns:
+- Generation, editing, graph (core)
+- Lightweight runtime (prototype/test)
+- Code export option
 
-Responsibilities:
+Partners for:
+- Production deployment
+- Complex backend needs
+- Advanced analytics (until intelligence layer ships)
 
-- scope edits correctly
-- preserve graph integrity
-- flag downstream moments affected by shared state changes
-- avoid unnecessary global rewrites
+**This is the pragmatic path.**
 
-This system is one of the hardest product differentiators. The user should feel they are editing with a scalpel, not re-rolling the whole app.
+---
 
-### 7.4 Deployment / Launch System
+## Technical Risk Areas
 
-Responsibilities:
+### High-Impact Risks
 
-- run app inside Momentum
-- share runnable prototype links
-- eventually deploy generated projects externally
-- preserve a stable mapping between deployed behavior and the graph revision that produced it
+**1. AppMap schema evolution**
+- Risk: Breaking changes as we add features
+- Mitigation: Versioning (`runtimeVersion`), migration helpers
 
-Near-term versions can launch a runtime snapshot from the current map. Later versions can create full app deployments.
+**2. Model output quality variance**
+- Risk: Generation/editing reliability fluctuates with model updates
+- Mitigation: Validation layers, fallback modes, regression testing
 
-### 7.5 Intelligence System
+**3. Graph/runtime state desync**
+- Risk: Canvas shows one thing, runtime executes another
+- Mitigation: Single source of truth (`activeMomentId`), sync guards
 
-Responsibilities:
+**4. Edit scope creep**
+- Risk: "Scoped" edits touch too much
+- Mitigation: Better prompting, validation, user feedback loop
 
-- instrument runtime events
-- map behavior to moments and edges
-- store funnel and interaction data
-- surface drop-off, loops, rage-clicks, and low-conversion transitions
-- support AI-assisted diagnosis and suggested fixes
+### Medium-Impact Risks
 
-The key design rule:
+**5. Canvas performance degradation**
+- Risk: >100 moments slows canvas
+- Mitigation: Virtualization, lazy rendering
 
-Analytics should resolve back to moments and journeys, not only to pages or generic events.
+**6. API cost scaling**
+- Risk: Model calls become expensive at scale
+- Mitigation: Caching, tiered limits, batch operations
 
-## 8. Editing Philosophy
+**7. State schema conflicts**
+- Risk: Edits change field types, break downstream moments
+- Mitigation: Conflict detection, resolution UI
 
-Momentum should not promise magic global correctness. It should promise:
+---
 
-- local editability
-- explicit impact awareness
-- constrained execution
-- understandable propagation
+## Open Technical Questions
 
-This means:
+These are real unknowns that affect long-term architecture:
 
-- some edits affect only one node
-- some edits must update downstream nodes
-- some edits require rewiring edges
-- some edits require app-level state changes
+### 1. How far can we push interpreter reliability?
 
-The system should explain which case happened and why.
+At what complexity does interpreter model break and require codegen?
 
-## 9. Runtime Maturity Model
+Current hypothesis: 80%+ of apps fit constrained schema. Codegen becomes optional export for edge cases.
 
-### V1: Stateful prototype runtime
+### 2. What's the right revision/deployment model?
 
-Goal:
+Options:
+- A: Map revisions + runtime snapshots (separate)
+- B: Unified artifact (map + deployed version linked)
+- C: Git-like model (commits, branches, merges)
 
-- make the graph executable
+Leaning: Start with B (simple linking), explore C later.
 
-Characteristics:
+### 3. How should AI-moment prompt editing work?
 
-- mobile-first
-- session-only state
-- deterministic auth/data/AI stubs
-- constrained component/action schema
-- launch from current map snapshot
-- edits update the running prototype
+When user wants to edit just one part of a complex prompt template:
 
-### V2: Shareable runtime
+Option A: Free-text edit (breaks structure)  
+Option B: Segment the template, edit segments  
+Option C: Natural language "change this part" meta-edit
 
-Goal:
+Leaning: C for consistency with rest of product.
 
-- make prototypes testable by other people
+### 4. What's the cleanest event model for intelligence?
 
-Characteristics:
+Requirements:
+- Events map to moments/edges
+- Low overhead (performance)
+- Privacy-safe
+- Queryable for analytics
 
-- stable share links
-- persisted drafts and revisions
-- richer state and entity modeling
-- stronger branch support
-- cleaner edit propagation
+Candidates:
+- Custom instrumentation SDK
+- PostHog with moment-level metadata
+- Amplitude with journey/moment properties
 
-### V3: Production path
+Decision needed before intelligence layer ships.
 
-Goal:
+### 5. Should we support real backend integrations or stay prototype-only?
 
-- move from executable prototype to deployable app system
+Options:
+- A: Prototype forever (Momentum is demo tool)
+- B: Integration layer (Supabase, Firebase, etc.)
+- C: Own the backend stack
 
-Characteristics:
+Leaning: B (integrations) for V2-V3, revisit C if we see production adoption.
 
-- backend/data integrations
-- external deployment targets
-- code export or hybrid runtime/codegen model
-- environment management
-- auth providers
-- stronger observability and rollback
+---
 
-### V4: Intelligence-native builder
+## Architecture Principles
 
-Goal:
+### Principle 1: Graph-Native Everything
 
-- make the map the place where product learning happens
+Every system should think in terms of the graph:
 
-Characteristics:
+- Generation produces `AppMap`
+- Canvas renders `AppMap`
+- Runtime executes from `AppMap`
+- Editing patches `AppMap`
+- Intelligence annotates `AppMap`
 
-- node-level analytics
-- suggested fixes
-- experiment workflows
-- AI debugging on specific moments, transitions, or prompts
+**Anti-pattern:** Side systems that bypass the graph.
 
-## 10. Technical Constraints
+### Principle 2: Explicit Over Implicit
 
-Momentum should stay honest about its current limits.
+Make structure visible:
+- Show branches, don't infer
+- Show state dependencies, don't hide
+- Show downstream impact, don't surprise
 
-Current constraints:
+**Anti-pattern:** Magic global fixes.
 
-- mobile-first only
-- constrained UI schema
-- limited action vocabulary
-- no true backend persistence in runtime session
-- no production deployment pipeline yet
-- no real analytics instrumentation yet
+### Principle 3: Scoped Over Broad
 
-These are not product failures. They are scope boundaries that protect execution quality while the core architecture hardens.
+Default to small, safe changes:
+- Edit one moment at a time
+- Flag when scope must widen
+- Make propagation transparent
 
-## 11. What Must Stay True
+**Anti-pattern:** Regenerate everything by default.
 
-Regardless of implementation path, the following must remain true:
+### Principle 4: Executable Over Static
 
-1. The map is the central artifact.
-2. Every important piece of behavior should have an address on the map.
-3. Editing should feel scoped and explainable.
-4. Runtime behavior should resolve back to graph structure.
-5. Analytics should attach to moments and journeys, not float outside the system.
-6. The product should reduce the fear of changing AI-built software.
+The graph should run:
+- Not just documentation
+- Not just design spec
+- Actual working app
 
-## 12. Strategic Positioning
+**Anti-pattern:** Pretty pictures disconnected from behavior.
 
-Momentum is not just:
+### Principle 5: Learning Resolves to Action
 
-- an AI builder
-- a no-code tool
-- a prototype generator
-- a graph editor
-- an analytics dashboard
+Feedback should point to fixes:
+- Not just "drop-off exists"
+- "Drop-off at this moment, fix by doing X"
 
-Momentum is a **graph-native application builder**.
+**Anti-pattern:** Analytics dashboards divorced from editing surface.
 
-Its wedge is not "faster generation."
+---
 
-Its wedge is:
+## System Evolution Path
 
-`AI-generated software that remains editable because its structure stays visible and executable.`
+### Stage 1 — Executable Prototype (Current)
 
-## 13. Open Technical Questions
+**State:** Working but constrained.
 
-These are the real engineering questions still worth tracking:
+**Capabilities:**
+- Generate map from prompt
+- Visual graph with branch handling
+- Interpreter runtime (mobile/web)
+- Scoped editing
+- Component builds
 
-1. How accurate can journey inference become across ambiguous prompts?
-2. How much of the product should stay interpreter-based versus codegen-based?
-3. How should AI moments be represented when they need real prompt-segment editing?
-4. What is the right persistence model for revisions, launches, and user sessions?
-5. How should real backend integrations map onto moments without breaking the graph abstraction?
-6. What is the cleanest event model for Intelligence so analytics remain graph-native?
+**Limitations:**
+- Prototype-only (no production deployment)
+- Constrained component vocabulary
+- Session state only
+- No real backend/auth/data
 
-## 14. Short Version
+**Goal:** Prove core loop (generate → navigate → edit → build).
 
-Momentum should become the system where:
+---
 
-- the app is generated
-- the map is generated with it
-- the map runs the app
-- the map is where the app is edited
-- the map is where user behavior is understood
+### Stage 2 — Shareable Testbed (Next 6-12 months)
 
-That is the full vision.
+**State:** Reliable for demos and user testing.
+
+**Capabilities:**
+- Stable share links
+- Revision history
+- Team collaboration baseline
+- Richer state modeling
+- Better error recovery
+
+**Limitations:**
+- Still not production-ready backend
+- Limited to supported integrations
+- Analytics not yet graph-native
+
+**Goal:** Teams can build and test real flows together.
+
+---
+
+### Stage 3 — Production Surface (12-24 months)
+
+**State:** Deployable for real user traffic.
+
+**Capabilities:**
+- Backend integrations (Supabase, Firebase, custom APIs)
+- Auth provider support (OAuth, SAML, etc.)
+- External deployment (Vercel, Netlify, custom)
+- Environment management (staging, prod)
+- Stronger observability
+
+**Limitations:**
+- Intelligence layer still in development
+- Custom backend logic requires workarounds
+
+**Goal:** Production apps run on Momentum runtime.
+
+---
+
+### Stage 4 — Intelligence-Native Builder (24+ months)
+
+**State:** Learning and optimization built in.
+
+**Capabilities:**
+- Behavior tracking at moment/edge level
+- Friction and drop-off mapped to nodes
+- AI-suggested fixes on graph
+- Experiment workflows (A/B test moments)
+- Continuous optimization loop
+
+**Limitations:**
+- None in core vision (stage 4 is the full vision)
+
+**Goal:** Teams build, run, and optimize all in one environment.
+
+---
+
+## Strategic Bets
+
+### Bet 1: Structure Compounds Value
+
+The more you edit on the graph, the more valuable it becomes:
+- You learn the map
+- You trust scoped changes
+- You rely on downstream awareness
+- Switching cost increases
+
+### Bet 2: Intelligence Layer Is Defensible
+
+If Momentum ships graph-native analytics first:
+- Competitors need architectural re-foundation to match
+- User muscle memory on graph-based optimization
+- Data moat (behavior history tied to moments)
+
+### Bet 3: Iteration Beats Generation Speed
+
+Users will pay more for safe iteration than fast first drafts:
+- First draft is free/cheap (Lovable, Bolt)
+- Sustained editing is premium (Momentum)
+
+### Bet 4: Non-Technical Users Are Underserved
+
+Current tools skew technical (code export, terminal UIs):
+- Founders think in flows, not files
+- Graph is more natural mental model
+- Less competition for this ICP
+
+---
+
+## What Momentum Is (Identity)
+
+Momentum is:
+- A **graph-native** application builder
+- An **iteration-first** AI tool
+- A **structure-explicit** editing environment
+
+Momentum is NOT:
+- Just another no-code tool (we don't limit capabilities to protect simplicity)
+- Just another AI builder (we optimize for iteration, not just generation)
+- A prototyping tool (the runtime is meant to be production-capable)
+- A separate analytics product (intelligence attaches to the graph)
+
+---
+
+## The Endgame
+
+In 3-5 years, Momentum should be the system where:
+
+1. Non-technical founders ship production apps
+2. Teams iterate faster with more confidence than with code
+3. Behavior insights resolve directly to fixable nodes
+4. The graph is the single source of truth for structure, execution, and learning
+
+If we achieve that, the business outcomes follow:
+- Strong retention (graph becomes sticky)
+- High willingness to pay (iteration value compounds)
+- Network effects (shared maps, templates, patterns)
+- Defensible position (intelligence layer moat)
+
+---
+
+## Architectural Trade-Offs (Honest Assessment)
+
+### Interpreter vs. Codegen
+
+**We chose interpreter-first because:**
+- Faster iteration (no regen step)
+- Safer constraints (validated schema)
+- Easier scoped editing (patch spec, not code)
+
+**Cost:**
+- Limited extensibility
+- Deployment requires runtime server
+- Users can't own raw codebase (yet)
+
+**Future hedge:** Add code export in V2-V3.
+
+### Graph Structure vs. Flexibility
+
+**We chose explicit graph because:**
+- Enables scoped editing
+- Makes dependencies visible
+- Supports future analytics
+
+**Cost:**
+- Apps must fit journey/moment model
+- Hard to represent very fluid/dynamic UIs
+- Learning curve for graph thinking
+
+**Mitigation:** Good defaults, clear error messages, escape hatches for edge cases.
+
+### Proprietary vs. Open
+
+**We chose proprietary `AppMap` format because:**
+- Full control over evolution
+- Tight coupling enables features
+- Platform differentiation
+
+**Cost:**
+- Lock-in concerns
+- Ecosystem adoption slower
+- Harder to integrate with existing tools
+
+**Future hedge:** Consider open spec in V3 if ecosystem benefits outweigh control.
+
+---
+
+## Success Definition (Concrete)
+
+Momentum succeeds when:
+
+### Product Success
+
+1. **Users trust iteration** — Median 7+ scoped edits per retained project
+2. **Structure proves valuable** — Graph visibility drives >50% of edit actions
+3. **Runtime becomes real** — 100+ production apps running on Momentum
+4. **Intelligence closes loop** — Graph-native analytics drives measurable retention lift
+
+### Business Success
+
+1. **Revenue** — $1M+ ARR by end of Year 2
+2. **Retention** — D30 >25%, M6 >15%
+3. **NPS** — >40 among active users
+4. **Growth** — 15-20% month-over-month for 12 months
+
+### Strategic Success
+
+1. **Category leadership** — Top 3 in "iteration-first AI builder" positioning
+2. **Moat validation** — Intelligence layer proves defensible
+3. **Exit optionality** — Strategic interest from design tools, dev platforms, or collaboration suites
+
+---
+
+## Final Principle
+
+Momentum should never promise magic.
+
+It should promise:
+- Visibility (you can see the structure)
+- Control (you choose what changes)
+- Safety (unintended impact is flagged)
+- Learning (behavior maps to fixable nodes)
+
+That's the honest product promise.
+
+---
+
+*This document defines long-term direction. For execution detail, see `PRD.md`. For fundraising, see `INVESTOR_ONEPAGER.md`.*

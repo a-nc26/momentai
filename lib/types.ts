@@ -4,6 +4,7 @@ export type RuntimePrimitive = string | number | boolean | null;
 export type RuntimeValue =
   | RuntimePrimitive
   | RuntimePrimitive[]
+  | unknown[]
   | Record<string, unknown>
   | Array<Record<string, unknown>>;
 
@@ -104,10 +105,12 @@ export interface RuntimeBranch {
   target: string;
 }
 
+export type RuntimeBackendOperation = 'upsert_record' | 'append_record' | 'read_record';
+
 export interface RuntimeActionSpec {
   id: string;
   label: string;
-  kind: 'navigate' | 'branch' | 'back' | 'compute';
+  kind: 'navigate' | 'branch' | 'back' | 'compute' | 'api-call';
   style?: 'primary' | 'secondary' | 'ghost';
   target?: string;
   branchKey?: string;
@@ -117,6 +120,13 @@ export interface RuntimeActionSpec {
   effects?: RuntimeEffectSpec[];
   // compute only: key → JS expression using state variable names
   formulas?: Record<string, string>;
+  // api-call only: deterministic backend operation scoped to the published app.
+  operation?: RuntimeBackendOperation;
+  namespace?: string;
+  keyTemplate?: string;
+  valueTemplate?: RuntimeValue;
+  resultKey?: string;
+  onErrorKey?: string;
 }
 
 export interface RuntimeScreenSpec {
@@ -137,11 +147,13 @@ export interface Moment {
   preview: string;
   position: { x: number; y: number };
   mockHtml?: string;
-  branchOf?: string; // parent node id — this node is hidden until parent is clicked
-  parentMomentId?: string; // compound parent moment id — hidden from top-level map until user drills in
-  promptTemplate?: string; // displayed in AI implementation panel (type === 'ai' only)
-  responseKey?: string;    // state key where AI response is written (defaults to `${id}_response`)
+  branchOf?: string;
+  parentMomentId?: string;
+  promptTemplate?: string;
+  responseKey?: string;
   screenSpec?: RuntimeScreenSpec;
+  componentCode?: string;
+  buildStatus?: 'idle' | 'building' | 'done' | 'error';
 }
 
 export interface Journey {
@@ -155,11 +167,24 @@ export interface FlowEdge {
   source: string;
   target: string;
   label?: string;
+  condition?: string;
+  dataFlow?: {
+    stateChanges?: string[];
+    apiCalls?: string[];
+  };
 }
 
 export interface AppMap {
   appName: string;
   appDescription: string;
+  /** When true (Pulse demo), AI steps use instant local stubs and the app may auto-build screens. */
+  demoMode?: boolean;
+  backend?: {
+    appId: string;
+    publishToken?: string;
+    guestId?: string;
+    tokenVersion?: number;
+  };
   appPlatform?: 'mobile' | 'web';
   runtimeVersion?: 1;
   stateSchema?: RuntimeStateField[];

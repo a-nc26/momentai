@@ -1,34 +1,27 @@
+import { JOURNEY_FRAME_MIN_GAP_Y } from './canvasLayout';
 import { AppMap } from './types';
+import { withGraphDemoComponentCode } from './demo-moment-components';
 import { withPulseRuntime } from './pulse-runtime';
-import {
-  WELCOME_HTML,
-  CREATE_ACCOUNT_HTML,
-  FITNESS_ASSESSMENT_HTML,
-  WORKOUT_HOME_HTML,
-  AI_WORKOUT_HTML,
-  EXERCISE_PLAYER_HTML,
-  WORKOUT_LOG_HTML,
-  PROGRESS_DASHBOARD_HTML,
-  ANALYTICS_HTML,
-  AI_INSIGHTS_HTML,
-  NUTRITION_LOG_HTML,
-  AI_MEALS_HTML,
-  RECIPE_DETAIL_HTML,
-  LOG_MEAL_HTML,
-  GOAL_BEGINNER_HTML,
-  GOAL_INTERMEDIATE_HTML,
-  GOAL_ADVANCED_HTML,
-  GOAL_ATHLETE_HTML,
-  LOG_PR_HTML,
-  SHARE_WORKOUT_HTML,
-  AI_DEBRIEF_HTML,
-} from './demo-screens';
+import { normalizeRuntimeAppMap } from './runtime';
+
+/** Screens / Data flow map modes use tall nodes (300px / 400px); keep bands ≥ this gap apart so journey frames do not overlap (`JOURNEY_FRAME_MIN_GAP_Y`). */
+const DEMO_SCREEN_NODE_H = 300;
+/**
+ * Lowest journey rows after onboarding: branch moments share the parent's Y (`createBaseCanvasPositionResolver`),
+ * so the whole onboarding fork sits on the spine row (y=0) — not the staggered `position.y` values in JSON.
+ */
+const DEMO_ONBOARDING_CONTENT_BOTTOM = DEMO_SCREEN_NODE_H;
+/** Daily-workout spine row Y; also used by `demo-edit` seed positions. */
+export const DEMO_DAILY_WORKOUT_ROW_Y = DEMO_ONBOARDING_CONTENT_BOTTOM + JOURNEY_FRAME_MIN_GAP_Y;
+const DEMO_PROGRESS_ROW_Y = DEMO_DAILY_WORKOUT_ROW_Y + DEMO_SCREEN_NODE_H + JOURNEY_FRAME_MIN_GAP_Y;
+const DEMO_NUTRITION_ROW_Y = DEMO_PROGRESS_ROW_Y + DEMO_SCREEN_NODE_H + JOURNEY_FRAME_MIN_GAP_Y;
 
 const BASE_DEMO_MAP: AppMap = {
   appName: 'Pulse — AI Fitness Coach',
   appDescription:
     'An AI-powered fitness app that generates personalised workouts, tracks progress, and adapts your plan in real time based on your performance and goals.',
   appPlatform: 'mobile',
+  demoMode: true,
   journeys: [
     {
       id: 'onboarding',
@@ -62,7 +55,6 @@ const BASE_DEMO_MAP: AppMap = {
       preview:
         'Full-screen gradient background, large Pulse logo centred, bold "Your AI Coach Awaits" headline, "Get Started" primary button, "I already have an account" link below.',
       position: { x: 0, y: 0 },
-      mockHtml: WELCOME_HTML,
     },
     {
       id: 'create-account',
@@ -72,8 +64,7 @@ const BASE_DEMO_MAP: AppMap = {
       description: 'Email/password registration with Apple and Google sign-in options.',
       preview:
         'Clean form with name, email, password fields. Divider "or continue with". Apple and Google social buttons. "Already have an account? Log in" footer link.',
-      position: { x: 280, y: 0 },
-      mockHtml: CREATE_ACCOUNT_HTML,
+      position: { x: 260, y: 0 },
     },
     {
       id: 'fitness-assessment',
@@ -84,8 +75,7 @@ const BASE_DEMO_MAP: AppMap = {
         'Multi-step questionnaire capturing fitness level, available equipment, and schedule.',
       preview:
         'Progress bar at top (Step 2 of 4). Large question "What\'s your current fitness level?" with illustrated option cards: Beginner, Intermediate, Advanced, Athlete. Back and Continue buttons.',
-      position: { x: 560, y: 0 },
-      mockHtml: FITNESS_ASSESSMENT_HTML,
+      position: { x: 520, y: 0 },
     },
     {
       id: 'goal-beginner',
@@ -94,8 +84,7 @@ const BASE_DEMO_MAP: AppMap = {
       type: 'ai',
       description: 'Claude generates a Foundation Builder plan — 3 days/week, 30–40 min, 8-week program focused on form and habit.',
       preview: 'Full-body split Mon/Wed/Fri. Milestones: first workout, 7-day streak, bodyweight squat mastered. AI reasoning shown.',
-      position: { x: 420, y: 220 },
-      mockHtml: GOAL_BEGINNER_HTML,
+      position: { x: 0, y: 200 },
       branchOf: 'fitness-assessment',
       promptTemplate: `You are Pulse AI. A user completed onboarding.
 User profile:
@@ -114,8 +103,8 @@ Return JSON: { planName, weeklySchedule[], milestones[], aiReasoning }`,
       type: 'ui',
       description: 'Introduces the first two training phases so the beginner plan ramps skill and consistency gradually.',
       preview: 'A clear 8-week roadmap card showing movement-pattern foundations, habit targets, and a low-friction starting volume.',
-      position: { x: 0, y: 0 },
-      parentMomentId: 'goal-beginner',
+      position: { x: 0, y: 320 },
+      branchOf: 'goal-beginner',
     },
     {
       id: 'goal-beginner-schedule',
@@ -124,8 +113,8 @@ Return JSON: { planName, weeklySchedule[], milestones[], aiReasoning }`,
       type: 'data',
       description: 'Translates the beginner plan into an easy 3-day weekly schedule with recovery spacing.',
       preview: 'Simple weekly cadence cards for Monday, Wednesday, Friday sessions with rest-day callouts and habit checkpoints.',
-      position: { x: 280, y: 0 },
-      parentMomentId: 'goal-beginner',
+      position: { x: 0, y: 440 },
+      branchOf: 'goal-beginner',
     },
     {
       id: 'goal-beginner-summary',
@@ -134,8 +123,8 @@ Return JSON: { planName, weeklySchedule[], milestones[], aiReasoning }`,
       type: 'ui',
       description: 'Wraps the beginner plan into a final summary before entering the workout dashboard.',
       preview: 'Final recap with 8-week focus, weekly cadence, first session recommendation, and a start-plan CTA.',
-      position: { x: 560, y: 0 },
-      parentMomentId: 'goal-beginner',
+      position: { x: 0, y: 560 },
+      branchOf: 'goal-beginner',
     },
     {
       id: 'goal-intermediate',
@@ -144,8 +133,7 @@ Return JSON: { planName, weeklySchedule[], milestones[], aiReasoning }`,
       type: 'ai',
       description: 'Claude generates a Strength & Conditioning plan — 4 days/week upper/lower split, 12-week progressive overload.',
       preview: 'Upper/lower 4-day split. Milestones: first 1RM recorded, +10% squat, bodyweight bench. AI reasoning shown.',
-      position: { x: 700, y: 220 },
-      mockHtml: GOAL_INTERMEDIATE_HTML,
+      position: { x: 260, y: 200 },
       branchOf: 'fitness-assessment',
       promptTemplate: `You are Pulse AI. A user completed onboarding.
 User profile:
@@ -164,8 +152,8 @@ Return JSON: { planName, weeklySchedule[], milestones[], aiReasoning }`,
       type: 'ui',
       description: 'Breaks the intermediate plan into a balanced 4-day upper/lower schedule with clear weekly rhythm.',
       preview: 'Four-day split cards with upper/lower emphasis, recovery spacing, and a progression note for the week.',
-      position: { x: 0, y: 0 },
-      parentMomentId: 'goal-intermediate',
+      position: { x: 260, y: 320 },
+      branchOf: 'goal-intermediate',
     },
     {
       id: 'goal-intermediate-progression',
@@ -174,8 +162,8 @@ Return JSON: { planName, weeklySchedule[], milestones[], aiReasoning }`,
       type: 'ai',
       description: 'Explains how progressive overload, rep targets, and deload pacing are applied to the plan.',
       preview: 'Progression framework cards showing volume targets, load increases, and when to deload.',
-      position: { x: 280, y: 0 },
-      parentMomentId: 'goal-intermediate',
+      position: { x: 260, y: 440 },
+      branchOf: 'goal-intermediate',
       promptTemplate: `You are Pulse AI. Turn an intermediate strength goal into clear weekly progression rules.
 Return JSON: { split, progressionRules[], deloadLogic, whyItWorks }`,
     },
@@ -186,8 +174,8 @@ Return JSON: { split, progressionRules[], deloadLogic, whyItWorks }`,
       type: 'ui',
       description: 'Final intermediate plan recap with weekly schedule, overload guidance, and first session recommendation.',
       preview: 'Plan summary screen with upper/lower cadence, overload rules, checkpoints, and a start-plan CTA.',
-      position: { x: 560, y: 0 },
-      parentMomentId: 'goal-intermediate',
+      position: { x: 260, y: 560 },
+      branchOf: 'goal-intermediate',
     },
     {
       id: 'goal-advanced',
@@ -196,8 +184,7 @@ Return JSON: { split, progressionRules[], deloadLogic, whyItWorks }`,
       type: 'ai',
       description: 'Claude generates a Power & Hypertrophy plan — 5-day PPL with undulating periodisation, 16 weeks.',
       preview: 'Push/Pull/Legs 5-day split. Milestones: deload week, 2× BW deadlift, peak week PR. AI reasoning shown.',
-      position: { x: 980, y: 220 },
-      mockHtml: GOAL_ADVANCED_HTML,
+      position: { x: 520, y: 200 },
       branchOf: 'fitness-assessment',
       promptTemplate: `You are Pulse AI. A user completed onboarding.
 User profile:
@@ -216,8 +203,8 @@ Return JSON: { planName, weeklySchedule[], milestones[], deloadWeeks[], aiReason
       type: 'ui',
       description: 'Defines the weekly Push/Pull/Legs split and how training days are distributed across the week.',
       preview: 'Weekly calendar builder with 5 training days, color-coded push/pull/legs cards, and a compact recovery balance summary.',
-      position: { x: 0, y: 0 },
-      parentMomentId: 'goal-advanced',
+      position: { x: 520, y: 320 },
+      branchOf: 'goal-advanced',
     },
     {
       id: 'goal-advanced-periodization',
@@ -226,8 +213,8 @@ Return JSON: { planName, weeklySchedule[], milestones[], deloadWeeks[], aiReason
       type: 'ai',
       description: 'Breaks the program into accumulation, intensification, and peak blocks with planned deload timing.',
       preview: 'Three stacked mesocycle cards showing intensity, volume focus, and a clear deload week before the peak block.',
-      position: { x: 280, y: 0 },
-      parentMomentId: 'goal-advanced',
+      position: { x: 520, y: 440 },
+      branchOf: 'goal-advanced',
       promptTemplate: `You are Pulse AI. Convert an advanced hypertrophy goal into clear mesocycles.
 Return JSON: { blockName, intensityFocus, volumeFocus, deloadTiming, whyItWorks }`,
     },
@@ -238,8 +225,8 @@ Return JSON: { blockName, intensityFocus, volumeFocus, deloadTiming, whyItWorks 
       type: 'data',
       description: 'Captures recovery rules, weekly fatigue limits, and conditions that trigger a lighter training week.',
       preview: 'Recovery rule cards with sleep, fatigue, soreness, and performance triggers that adjust the plan cadence.',
-      position: { x: 560, y: 0 },
-      parentMomentId: 'goal-advanced',
+      position: { x: 520, y: 560 },
+      branchOf: 'goal-advanced',
     },
     {
       id: 'goal-advanced-summary',
@@ -248,8 +235,8 @@ Return JSON: { blockName, intensityFocus, volumeFocus, deloadTiming, whyItWorks 
       type: 'ui',
       description: 'Summarizes the full advanced plan, expected weekly cadence, and the first session recommendation.',
       preview: 'A final recap screen with split overview, mesocycle timeline, recovery notes, and a start-plan CTA.',
-      position: { x: 840, y: 0 },
-      parentMomentId: 'goal-advanced',
+      position: { x: 520, y: 680 },
+      branchOf: 'goal-advanced',
     },
     {
       id: 'goal-athlete',
@@ -258,8 +245,7 @@ Return JSON: { blockName, intensityFocus, volumeFocus, deloadTiming, whyItWorks 
       type: 'ai',
       description: 'Claude generates an Elite Performance plan — 6-day competition-grade program, 20 weeks with mesocycles.',
       preview: '6-day max strength + speed + conditioning. Milestones: baseline test, competition sim, peak performance test.',
-      position: { x: 1260, y: 220 },
-      mockHtml: GOAL_ATHLETE_HTML,
+      position: { x: 780, y: 200 },
       branchOf: 'fitness-assessment',
       promptTemplate: `You are Pulse AI. A user completed onboarding.
 User profile:
@@ -278,8 +264,8 @@ Return JSON: { planName, mesocycles[], weeklySchedule[], milestones[], competiti
       type: 'ai',
       description: 'Maps the athlete program into mesocycles for strength, speed, and competition readiness.',
       preview: 'Mesocycle cards for strength, speed, taper, and competition simulation blocks across a 20-week runway.',
-      position: { x: 0, y: 0 },
-      parentMomentId: 'goal-athlete',
+      position: { x: 780, y: 320 },
+      branchOf: 'goal-athlete',
       promptTemplate: `You are Pulse AI. Turn an elite athlete goal into clear mesocycles.
 Return JSON: { mesocycles[], priorityShifts[], readinessChecks[] }`,
     },
@@ -290,8 +276,8 @@ Return JSON: { mesocycles[], priorityShifts[], readinessChecks[] }`,
       type: 'data',
       description: 'Captures performance testing, recovery windows, and competition simulation checkpoints.',
       preview: 'Performance checkpoint cards for sprint, power, and readiness testing with competition sim milestones.',
-      position: { x: 280, y: 0 },
-      parentMomentId: 'goal-athlete',
+      position: { x: 780, y: 440 },
+      branchOf: 'goal-athlete',
     },
     {
       id: 'goal-athlete-summary',
@@ -300,11 +286,11 @@ Return JSON: { mesocycles[], priorityShifts[], readinessChecks[] }`,
       type: 'ui',
       description: 'Summarizes the elite performance plan before handing off to the day-to-day workout dashboard.',
       preview: 'Final athlete plan overview with mesocycle timeline, comp sim checkpoints, and a launch-plan CTA.',
-      position: { x: 560, y: 0 },
-      parentMomentId: 'goal-athlete',
+      position: { x: 780, y: 560 },
+      branchOf: 'goal-athlete',
     },
 
-    // Daily Workout — y: 320
+    // Daily Workout — stack below resolved onboarding bounds (one row at y=0) + frame gap
     {
       id: 'workout-home',
       journeyId: 'daily-workout',
@@ -314,8 +300,7 @@ Return JSON: { mesocycles[], priorityShifts[], readinessChecks[] }`,
         'Home screen showing today\'s workout, streak counter, and quick stats.',
       preview:
         'Greeting header "Good morning, Alex 💪", streak badge "14 days", today\'s plan card with workout name and estimated duration, "Start Workout" prominent button, recent activity list below.',
-      position: { x: 0, y: 480 },
-      mockHtml: WORKOUT_HOME_HTML,
+      position: { x: 0, y: DEMO_DAILY_WORKOUT_ROW_Y },
     },
     {
       id: 'ai-workout',
@@ -326,8 +311,7 @@ Return JSON: { mesocycles[], priorityShifts[], readinessChecks[] }`,
         'Generates a dynamic workout adapted to today\'s energy level, recovery status, and equipment.',
       preview:
         'Card asking "How are you feeling today?" with energy slider (1–5). Below: AI-generated workout card showing exercise count, muscle groups targeted, estimated calories. "Looks good, let\'s go" and "Regenerate" buttons.',
-      position: { x: 280, y: 480 },
-      mockHtml: AI_WORKOUT_HTML,
+      position: { x: 260, y: DEMO_DAILY_WORKOUT_ROW_Y },
       promptTemplate: `You are Pulse AI. Generate today's adapted workout.
 User state:
 - Energy level: {{energyLevel}} / 5
@@ -347,8 +331,7 @@ Return JSON: { exercises[], sets, reps, estimatedDuration, estimatedCalories, ad
       description: 'Guided exercise view with video placeholder, rep/set counter, and rest timer.',
       preview:
         'Large exercise illustration/video area, exercise name "Bulgarian Split Squat" in large type, set counter "Set 2 of 4", rep target "12 reps", animated countdown rest timer, "Done" and "Skip" buttons, progress bar at bottom.',
-      position: { x: 560, y: 480 },
-      mockHtml: EXERCISE_PLAYER_HTML,
+      position: { x: 520, y: DEMO_DAILY_WORKOUT_ROW_Y },
     },
     {
       id: 'workout-log',
@@ -359,8 +342,7 @@ Return JSON: { exercises[], sets, reps, estimatedDuration, estimatedCalories, ad
         'Post-workout summary showing performance, calories burned, and personal records.',
       preview:
         'Celebration animation at top, "Workout Complete! 🎉" headline, stat row: 42 min · 387 kcal · 5 exercises, personal record badge "New PR: Deadlift", weekly progress ring, "Share" and "Done" buttons.',
-      position: { x: 840, y: 480 },
-      mockHtml: WORKOUT_LOG_HTML,
+      position: { x: 780, y: DEMO_DAILY_WORKOUT_ROW_Y },
     },
 
     // Completion & Log branches
@@ -371,8 +353,7 @@ Return JSON: { exercises[], sets, reps, estimatedDuration, estimatedCalories, ad
       type: 'data',
       description: 'When a personal record is detected, a celebration screen shows the old vs new PR with delta and share options.',
       preview: 'Dark celebration screen with trophy animation, lift name, previous vs new weight comparison, +% improvement, share PR button.',
-      position: { x: 700, y: 640 },
-      mockHtml: LOG_PR_HTML,
+      position: { x: 500, y: DEMO_DAILY_WORKOUT_ROW_Y },
       branchOf: 'workout-log',
     },
     {
@@ -382,34 +363,11 @@ Return JSON: { exercises[], sets, reps, estimatedDuration, estimatedCalories, ad
       type: 'ui',
       description: 'Share a pre-formatted workout summary card to Instagram, Twitter, WhatsApp, or copy a link.',
       preview: 'Dark branded share card with stats (calories, exercises, streak, volume), PR badge, social platform options grid.',
-      position: { x: 980, y: 640 },
-      mockHtml: SHARE_WORKOUT_HTML,
+      position: { x: 700, y: DEMO_DAILY_WORKOUT_ROW_Y },
       branchOf: 'workout-log',
     },
-    {
-      id: 'ai-debrief',
-      journeyId: 'daily-workout',
-      label: 'AI Debrief',
-      type: 'ai',
-      description: 'Claude analyses the completed session and surfaces insights: volume spikes, plateau breaks, rest period flags, and next session prep.',
-      preview: 'Coach banner with AI avatar, 3 insight cards (recovery alert, strength gain, form tip), next session recommendation with exercise chips.',
-      position: { x: 1260, y: 640 },
-      mockHtml: AI_DEBRIEF_HTML,
-      branchOf: 'workout-log',
-      promptTemplate: `You are Pulse AI Coach. Analyse the completed session.
-Session data:
-- Duration: {{duration}} min
-- Exercises: {{exercises}}
-- Total volume: {{totalVolume}} kg
-- PRs set: {{prs}}
-- Avg rest period: {{avgRest}}s
 
-Surface 2–3 specific coaching insights. Flag recovery risks if volume
-spiked >25% vs prior week. Recommend next session adjustments.
-Return JSON: { insights[{ title, body, severity }], recoveryRating, nextSessionTip }`,
-    },
-
-    // Progress — y: 640
+    // Progress
     {
       id: 'progress-dashboard',
       journeyId: 'progress',
@@ -419,8 +377,10 @@ Return JSON: { insights[{ title, body, severity }], recoveryRating, nextSessionT
         'Personal analytics overview: body metrics, workout frequency, and strength trends.',
       preview:
         'Body weight chart (past 30 days, line graph), metric cards: Workouts This Month (18), Total Volume (24,500 kg), Avg Session (41 min). Muscle group heatmap diagram. Navigation tabs: Overview · Strength · Body.',
-      position: { x: 0, y: 800 },
-      mockHtml: PROGRESS_DASHBOARD_HTML,
+      position: {
+        x: 0,
+        y: DEMO_PROGRESS_ROW_Y,
+      },
     },
     {
       id: 'analytics',
@@ -430,8 +390,10 @@ Return JSON: { insights[{ title, body, severity }], recoveryRating, nextSessionT
       description: 'Detailed lift progression charts with volume, 1RM estimates, and milestones.',
       preview:
         'Lift selector (Squat / Bench / Deadlift / OHP) as pill tabs. Line chart showing 1RM estimate over 12 weeks. Milestone markers on chart. Below: personal records table with dates and weights. Export CSV button.',
-      position: { x: 280, y: 800 },
-      mockHtml: ANALYTICS_HTML,
+      position: {
+        x: 260,
+        y: DEMO_PROGRESS_ROW_Y,
+      },
     },
     {
       id: 'ai-insights',
@@ -442,8 +404,10 @@ Return JSON: { insights[{ title, body, severity }], recoveryRating, nextSessionT
         'Claude analyses training history and surfaces actionable coaching insights and recovery recommendations.',
       preview:
         'Weekly insight card with coach avatar: "Your squat volume increased 23% — consider a deload next week." Three insight cards below: Recovery Alert, Strength Plateau Detected, Nutrition Gap. Each tappable for detail.',
-      position: { x: 560, y: 800 },
-      mockHtml: AI_INSIGHTS_HTML,
+      position: {
+        x: 520,
+        y: DEMO_PROGRESS_ROW_Y,
+      },
       promptTemplate: `You are Pulse AI Coach. Review 30 days of training.
 Training summary:
 - Total sessions: {{sessionCount}}
@@ -456,7 +420,7 @@ Identify patterns, flag plateau risk, and surface 3 actionable insights.
 Return JSON: { weeklyInsight, alertCards[{ title, body, type }], recommendations[] }`,
     },
 
-    // Nutrition — y: 960
+    // Nutrition
     {
       id: 'nutrition-log',
       journeyId: 'nutrition',
@@ -465,8 +429,10 @@ Return JSON: { weeklyInsight, alertCards[{ title, body, type }], recommendations
       description: 'Daily calorie and macro tracker with meal timeline and progress rings.',
       preview:
         'Top: calorie ring (1,840 / 2,400 kcal). Three macro rings: Protein 142g, Carbs 186g, Fat 58g. Meal timeline: Breakfast · Lunch · Dinner · Snacks with logged items. "+ Log Food" sticky button at bottom.',
-      position: { x: 0, y: 1120 },
-      mockHtml: NUTRITION_LOG_HTML,
+      position: {
+        x: 0,
+        y: DEMO_NUTRITION_ROW_Y,
+      },
     },
     {
       id: 'ai-meals',
@@ -477,8 +443,10 @@ Return JSON: { weeklyInsight, alertCards[{ title, body, type }], recommendations
         'Claude recommends meals based on remaining macros, dietary preferences, and what\'s in the fridge.',
       preview:
         'Header: "You need 58g more protein today." Three AI-suggested meal cards with photo placeholder, name, macro breakdown chips, and prep time. "Add to Plan" button on each. Dietary filter pills at top: All · High Protein · Low Carb · Vegan.',
-      position: { x: 280, y: 1120 },
-      mockHtml: AI_MEALS_HTML,
+      position: {
+        x: 260,
+        y: DEMO_NUTRITION_ROW_Y,
+      },
       promptTemplate: `You are Pulse Nutrition AI. Recommend meals for the rest of today.
 User state:
 - Remaining calories: {{caloriesLeft}} kcal
@@ -497,8 +465,10 @@ Return JSON: { meals[{ name, calories, protein, carbs, fat, prepTime, ingredient
       description: 'Full recipe view with ingredients, instructions, and macro breakdown.',
       preview:
         'Hero food image, recipe name "Grilled Salmon & Quinoa Bowl", macro badge row: 520 kcal · 48g protein · 42g carbs · 14g fat. Tabbed sections: Ingredients · Instructions. Sticky "Log This Meal" button at bottom.',
-      position: { x: 560, y: 1120 },
-      mockHtml: RECIPE_DETAIL_HTML,
+      position: {
+        x: 520,
+        y: DEMO_NUTRITION_ROW_Y,
+      },
     },
     {
       id: 'log-meal',
@@ -508,8 +478,10 @@ Return JSON: { meals[{ name, calories, protein, carbs, fat, prepTime, ingredient
       description: 'Confirm meal portions and commit to daily nutrition log.',
       preview:
         'Meal confirmation screen: food item with portion size stepper (0.5x · 1x · 1.5x · 2x), live macro update as portion changes, meal category picker (Breakfast/Lunch/Dinner/Snack), time logged automatically, "Save to Log" button.',
-      position: { x: 840, y: 1120 },
-      mockHtml: LOG_MEAL_HTML,
+      position: {
+        x: 780,
+        y: DEMO_NUTRITION_ROW_Y,
+      },
     },
   ],
   edges: [
@@ -520,10 +492,10 @@ Return JSON: { meals[{ name, calories, protein, carbs, fat, prepTime, ingredient
     { id: 'e3b', source: 'fitness-assessment', target: 'goal-intermediate', label: 'Intermediate' },
     { id: 'e3c', source: 'fitness-assessment', target: 'goal-advanced', label: 'Advanced' },
     { id: 'e3d', source: 'fitness-assessment', target: 'goal-athlete', label: 'Athlete' },
-    { id: 'e4a', source: 'goal-beginner', target: 'workout-home', label: 'Plan ready' },
-    { id: 'e4b', source: 'goal-intermediate', target: 'workout-home', label: 'Plan ready' },
-    { id: 'e4c', source: 'goal-advanced', target: 'workout-home', label: 'Plan ready' },
-    { id: 'e4d', source: 'goal-athlete', target: 'workout-home', label: 'Plan ready' },
+    { id: 'e4a', source: 'goal-beginner', target: 'goal-beginner-foundation', label: 'Review plan' },
+    { id: 'e4b', source: 'goal-intermediate', target: 'goal-intermediate-split', label: 'Review plan' },
+    { id: 'e4c', source: 'goal-advanced', target: 'goal-advanced-split', label: 'Review plan' },
+    { id: 'e4d', source: 'goal-athlete', target: 'goal-athlete-mesocycles', label: 'Review plan' },
     { id: 'e4a-1', source: 'goal-beginner-foundation', target: 'goal-beginner-schedule', label: 'Set weekly cadence' },
     { id: 'e4a-2', source: 'goal-beginner-schedule', target: 'goal-beginner-summary', label: 'Review beginner plan' },
     { id: 'e4a-3', source: 'goal-beginner-summary', target: 'workout-home', label: 'Start beginner plan' },
@@ -545,14 +517,13 @@ Return JSON: { meals[{ name, calories, protein, carbs, fat, prepTime, ingredient
     { id: 'e8', source: 'workout-log', target: 'progress-dashboard', label: 'View progress' },
     { id: 'e8a', source: 'workout-log', target: 'log-pr', label: 'PR detected' },
     { id: 'e8b', source: 'workout-log', target: 'share-workout', label: 'Share' },
-    { id: 'e8c', source: 'workout-log', target: 'ai-debrief', label: 'Get debrief' },
 
     // Progress
     { id: 'e9', source: 'progress-dashboard', target: 'analytics' },
     { id: 'e10', source: 'analytics', target: 'ai-insights', label: 'Get insights' },
 
-    // Nutrition
-    { id: 'e11', source: 'workout-home', target: 'nutrition-log', label: 'Track nutrition' },
+    // Nutrition (from Progress — avoids a long vertical wire from Workout home across the map)
+    { id: 'e11', source: 'progress-dashboard', target: 'nutrition-log', label: 'Track nutrition' },
     { id: 'e12', source: 'nutrition-log', target: 'ai-meals', label: 'Get suggestions' },
     { id: 'e13', source: 'ai-meals', target: 'recipe-detail' },
     { id: 'e14', source: 'recipe-detail', target: 'log-meal' },
@@ -560,4 +531,10 @@ Return JSON: { meals[{ name, calories, protein, carbs, fat, prepTime, ingredient
   ],
 };
 
-export const DEMO_MAP: AppMap = withPulseRuntime(BASE_DEMO_MAP);
+/** Deep-clone base demo data then re-apply runtime + graph code so resets never reuse a mutated singleton. */
+export function createFreshDemoMap(): AppMap {
+  const cloned = JSON.parse(JSON.stringify(BASE_DEMO_MAP)) as AppMap;
+  return normalizeRuntimeAppMap(withPulseRuntime(withGraphDemoComponentCode(cloned)));
+}
+
+export const DEMO_MAP: AppMap = createFreshDemoMap();

@@ -4,6 +4,8 @@ import AdmZip from 'adm-zip';
 import path from 'path';
 import { normalizeRuntimeAppMap } from '@/lib/runtime';
 import type { AppMap } from '@/lib/types';
+import { requireBuildCredits } from '@/lib/build-access-server';
+import { CREDIT_ANALYZE_CODEBASE } from '@/lib/credit-costs';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -285,6 +287,8 @@ function makeStream() {
 // ─── Route ───────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const denied = await requireBuildCredits(req, CREDIT_ANALYZE_CODEBASE);
+  if (denied) return denied;
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json({ error: 'Missing ANTHROPIC_API_KEY' }, { status: 500 });
   }

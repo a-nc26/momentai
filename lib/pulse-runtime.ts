@@ -47,6 +47,11 @@ export const PULSE_STATE_SCHEMA: RuntimeStateField[] = [
 ];
 
 export const PULSE_INITIAL_STATE = {
+  profileName: 'Alex Johnson',
+  profileEmail: 'alex@pulse.app',
+  profilePassword: 'demo-password',
+  fitnessLevel: 'Beginner',
+  equipment: ['Full Gym'],
   workoutEnergy: '3',
   currentWorkoutTitle: 'Lower Body Power',
   currentWorkoutFocus: 'Glutes, quads, and core',
@@ -480,7 +485,6 @@ const PULSE_SCREEN_SPECS: Record<string, RuntimeScreenSpec> = {
       { id: 'workout-log-progress', label: 'View Progress', kind: 'navigate', target: 'progress-dashboard', style: 'primary' },
       { id: 'workout-log-pr', label: 'Log PR', kind: 'navigate', target: 'log-pr', style: 'secondary' },
       { id: 'workout-log-share', label: 'Share', kind: 'navigate', target: 'share-workout', style: 'secondary' },
-      { id: 'workout-log-ai', label: 'Get AI Debrief', kind: 'navigate', target: 'ai-debrief', style: 'secondary' },
     ],
   },
   'log-pr': {

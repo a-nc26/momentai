@@ -68,6 +68,7 @@ export default function LaunchPage() {
   };
 
   const currentMomentLabel = appMap?.moments.find((m) => m.id === currentMomentId)?.label;
+  const isWeb = (appMap?.appPlatform ?? 'mobile') === 'web';
 
   if (!appMap || !runtimeSeedId) {
     return (
@@ -110,13 +111,19 @@ export default function LaunchPage() {
           <Canvas />
         </div>
 
-        {/* Runtime phone */}
-        <div className="w-[300px] border-l border-zinc-800 flex items-center justify-center p-4 shrink-0">
+        {/* Runtime preview — web uses a wider column to match BASE_WEB layout scale */}
+        <div
+          className={
+            isWeb
+              ? 'w-[min(100%,480px)] min-w-[340px] border-l border-zinc-800 flex items-center justify-center p-3 shrink-0'
+              : 'w-[300px] border-l border-zinc-800 flex items-center justify-center p-4 shrink-0'
+          }
+        >
           <MobileRuntime
             key={runtimeSeedId}
-            appMap={{ ...appMap, appPlatform: 'mobile' }}
+            appMap={appMap}
             startMomentId={runtimeSeedId}
-            phoneWidth={260}
+            phoneWidth={isWeb ? 420 : 260}
             maxHeight={runtimeMaxHeight}
             onMomentChange={handleMomentChange}
             projectId={activeProjectId}

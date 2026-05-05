@@ -1,432 +1,982 @@
 # Momentum — Master Product Document
-**Version:** 1.0
-**Date:** March 2026
-**Use:** LLM consultation, advisor conversations, fundraising prep, strategic planning
+
+**Version:** 2.2  
+**Updated:** April 11, 2026  
+**Purpose:** Canonical product truth for team, advisors, investors, and LLM context
+
+**Strategic source of truth:** `PRD.md` **Part I** (Mid-Code AI Architecture Mapping Tool — positioning, audience, prompting-gap thesis, roadmap, funding). This document implements that strategy in product and technical terms under the codebase name **Momentum**.
 
 ---
 
-## How To Use This Document
+## Executive Summary
 
-This document is the single source of truth for Momentum. Use it as context when consulting LLMs or advisors. It covers: what the product is, why it exists, what the market looks like, who the competition is, what is built today, and where it is going.
+Momentum (public name TBD; working title *Architectural Building Tool*) serves **architectural builders**: people who understand product structure and APIs and want more precision than typical no-code, but who are not yet fluent with full-code AI IDEs. The wedge is **visibility**: a prompt produces an interactive **architecture map** (screens, flows, data) so users stop **blind prompting** and can point changes at specific nodes and journeys.
 
-Start any LLM session with: *"I'm building a product called Momentum. Here is the full product context: [paste this doc]. My question is: [your question]."*
+Technically, Momentum is a graph-native AI app builder that generates a runnable application and a visual flow map together from a single prompt. Every screen, flow, and branch becomes a named node on that map. Edits target specific nodes instead of re-generating the entire app, addressing the **prompting gap** — vague instructions to a system you cannot see — that makes no-code environments feel brittle and complex at scale (a pattern validated across **30 user interviews** in thesis research).
 
----
-
-## Part 1: The One-Line Summary
-
-**Momentum is an AI app builder that generates a visual map of your app's flows at the same time it builds the app — so every future edit is targeted to one specific part, and nothing else breaks.**
-
-The core bet: the hard problem in AI-built software is not the first version. It is controlled iteration. Momentum is built around that.
+**The core bet:** The hard problem in AI-built software is not first-draft speed — it's **precise, contextual iteration** as the product grows, enabled by architectural visibility.
 
 ---
 
-## Part 2: The Problem
+## The Problem (Market Context)
 
-### What everyone else does
+### How AI Builders Work Today
 
-Every major AI builder today — Lovable, Bolt, Replit, Base44 — works the same way at its core:
+Tools like Lovable, Bolt, Replit Agent, and Base44 have proven massive demand for AI-assisted app building. They excel at first-draft generation: describe what you want, get a working prototype in minutes.
 
-1. User types a description
-2. AI generates an app (code, HTML, or a rendered UI)
-3. User sees the result
-4. User wants to change something specific
-5. User types another prompt
-6. AI regenerates — often touching things the user did not ask about
+The loop breaks when users want to iterate:
 
-This is the fundamental UX loop of every current AI builder. And it breaks down at step 5.
+1. User asks to "fix the signup flow"
+2. Model has no stable notion of what "signup" means structurally
+3. Model infers, regenerates broad surfaces
+4. Unrelated screens drift or break
+5. Trust drops, users stop iterating or rebuild manually
 
-### Why it breaks
+### Why This Happens
 
-The AI has no visibility into the structure of what it built. It sees a codebase or a rendered output as an undifferentiated whole. When you say "change the onboarding step," the AI does not know where onboarding starts and ends. It guesses. Sometimes it gets it right. Often it does not.
+Current builders output **undifferentiated code or UI blobs**. There's no persistent structure that says "this is the login screen," "this is the branch for payment failure," or "this state flows from onboarding to dashboard."
 
-The documented failure mode: projects with 15-20+ components experience severe context loss — the AI forgets established patterns, creates duplicate code, and loses architectural consistency. Changes break unrelated features. Users lose confidence. They stop touching the app.
+When structure is invisible, every change is a guess. The model might:
+- Touch unrelated components
+- Duplicate patterns
+- Break cross-screen dependencies
+- Lose architectural consistency
 
-### The quote that captures it
+### The Ceiling Effect
 
-> *"As your app grows, the AI can lose track of the full codebase, with changes sometimes breaking unrelated features."*
+This creates a **practical ceiling** for prompt-only tools:
+- Excellent for MVPs and prototypes
+- Increasingly fragile as apps grow beyond 10-15 screens
+- Iteration confidence drops with session count
+- Many projects stall or require manual rebuild
 
-This is written about Bolt.new but applies equally to Lovable, Replit, and every other prompt-based builder. It is not a bug. It is a structural limitation of the current generation of tools.
+Documented pattern: users abandon AI tools when projects reach complexity thresholds where changes feel unpredictable.
 
-### Why this matters more over time
+### The Real Constraint
 
-The problem compounds. The bigger the app, the worse it gets. The longer you've been building with a tool, the more likely a re-prompt breaks something you built three sessions ago.
-
-This means every existing AI builder has a natural ceiling: they work great for MVPs, and become increasingly unreliable as the product grows. The user base eventually churns or stays stuck at prototype stage.
+The market has proven demand for AI-assisted building. The unresolved constraint is **sustained iteration** — making the 2nd, 5th, and 20th edit as safe and predictable as the first generation.
 
 ---
 
-## Part 3: The Solution
+## Momentum's Solution
 
-### The core insight
+### Core Insight
 
-Every part of an app needs an address.
+Every meaningful part of an app needs an **address**.
 
-If you want to change only the login screen, the system needs to know what "the login screen" is — where it starts, what state it touches, what comes before and after it, and what other parts of the app would be affected by changing it.
+To edit "just the login screen," the system must know:
+- What login is (structurally, not lexically)
+- What state it depends on
+- What screens connect to it
+- What should remain untouched when login changes
 
-Momentum solves this by making the app's structure explicit and visual from the first prompt.
+Momentum makes this structure **explicit, visual, and editable from the first prompt**.
 
-### What Momentum does differently
+### The AppMap
 
-When you describe your app to Momentum, two things are generated simultaneously:
+From one description, Momentum generates:
 
-1. A **runnable app** — interactive, navigable, real
-2. A **visual Journey Map** — a graph showing every user flow, every screen, every branch
+1. **A runnable app** — interactive flows with real state, navigation, and branching
+2. **A journey map** — visual graph of screens (moments), flows (journeys), and relationships (edges)
 
-The map is not documentation. It is the operating interface for everything that happens next.
+The map is not static documentation. It's the **authoring surface** for everything that happens next.
 
-Every screen, step, AI action, data operation, and branch in your app gets a node on the map. Every node has an address. Every edit targets one node.
+### The Edit Model
 
-### The edit model
-
-Instead of: *"Re-prompt the whole app to change one thing"*
-
-Momentum does: *"Click the specific node. Describe the change. Only that node updates."*
-
-This is structurally different from every other tool. It is not faster generation. It is a different model of how you interact with AI-built software after the first version.
-
-### The full loop (vision)
+Instead of "describe app → regenerate everything → hope nothing broke," the loop is:
 
 ```
-Describe app
-  → App is built + map appears simultaneously
-  → Click any node to inspect or edit it
-  → Edit one moment → only that moment changes
-  → Launch the app
-  → Watch real user behavior
-  → See which nodes have the most drop-off (on the map)
-  → Click the problem node → fix it
-  → Repeat
+Select the node → describe the change → update that moment
 ```
 
-Everything happens inside one interface. No context switching. No external analytics tool. No separate deployment pipeline. The map is the place where the app is built, run, and understood.
+The system knows:
+- Which moment you're editing
+- What state that moment touches
+- What downstream moments depend on those state changes
+- What can safely stay unchanged
+
+Result: **scoped, explainable, safer edits**.
+
+### Downstream Awareness
+
+When an edit affects shared state (e.g. changing a field name or adding a new step), Momentum:
+- Flags potentially affected moments on the map
+- Offers to refresh their descriptions/previews
+- Shows you which screens changed and why
+
+You stay in control of propagation instead of discovering breakage later.
 
 ---
 
-## Part 4: Market Context
+## Product Architecture
 
-### The market is exploding
+### The AppMap Structure
 
-The vibe coding / AI builder market reached **$4.7 billion in 2025** and is projected to grow to **$12.3 billion by 2027**. The broader no-code/low-code market hit **$30.1 billion in 2024** and is projected to reach **$101.7 billion by 2030** (32.2% CAGR).
+`AppMap` is the central contract. It contains:
 
-Key signal: **21% of Y Combinator's Winter 2025 batch had codebases that were 91%+ AI-generated.** More than 30% of early-stage startups globally reported using vibe coding to build MVPs in under a week.
+**App-level:**
+- `appName`, `appDescription`, `appPlatform` (mobile/web)
+- `stateSchema` — typed fields (string, number, boolean, enum, arrays)
+- `initialState` — default values
 
-This is not a niche. It is the new normal for early-stage product development.
+**Structural:**
+- `journeys` — named flows (Onboarding, Checkout, Track Progress, etc.)
+- `moments` — typed steps within journeys
+- `edges` — directed connections between moments
 
-### The players and their numbers
+**Per-Moment:**
+- `id`, `journeyId`, `type`, `label`, `description`, `preview`
+- `position` — canvas coordinates
+- `branchOf` — optional parent for conditional paths
+- `screenSpec` — structured UI definition (components + actions)
+- `componentCode` — optional generated React (for build path)
+- `promptTemplate` — for AI moments
 
-| Company | ARR / Revenue | Valuation | Raise | Notes |
-|---|---|---|---|---|
-| **Lovable** | $200M ARR (Nov 2025) | $6.6B | $330M Series B | $0 → $100M ARR in 8 months — fastest in software history |
-| **Replit** | $265M ARR (2025) | $9B | $400M Series D | 85% of Fortune 500 companies using it |
-| **Base44** | $50M ARR (run-rate) | Acquired | $80M acquisition by Wix | Solo founder, 6 months old, 2M users |
-| **Bolt.new** | Not public | Not public | StackBlitz-backed | Strong developer user base |
-| **v0 (Vercel)** | Embedded in Vercel | $3.25B (Vercel) | Vercel-funded | UI component generation; no full app runtime |
-| **Bubble** | ~$100M ARR | Not public | Bootstrapped → raised | Legacy no-code; visual but not AI-native |
+### Moment Types
 
-### What these numbers mean for Momentum
+| Type | Represents | Example |
+|------|-----------|---------|
+| `ui` | Screen, form, navigation step | Login form, Dashboard, Settings |
+| `ai` | AI-powered step with prompt template | Generate workout plan, Analyze receipt, Suggest meals |
+| `data` | Database read/write, storage operation | Save expense, Load user profile, Log workout |
+| `auth` | Authentication or authorization | Sign up, Login, Verify email |
 
-This market has already proven the demand is real. Lovable went from zero to $100M ARR in 8 months. Base44 was acquired for $80M after 6 months. Replit went from $16M to $265M ARR in a single year.
+### Runtime Screen Spec
 
-**The problem is not whether people want to build apps with AI. They do. The problem is that the current tools break down as the product grows.** That is Momentum's wedge.
+Declarative UI schema interpreted by `MobileRuntime` / `ReactRuntime`:
 
-### Who is building on these tools
+**Components:**
+- `hero` — title, subtitle, badge
+- `input` — text/email/password/number fields
+- `choice-cards` — single/multi-select cards with icons
+- `chip-group` — tag-style selection
+- `notice` — info/success/warning callouts
+- `summary-card` — content cards with title/body/items
+- `stats-grid` — key-value metric displays
+- `list` — bulleted items
+- `spacer` — vertical spacing
 
-The primary user is not a developer. It is:
+**Actions:**
+- `navigate` — go to target moment
+- `branch` — conditional navigation based on state value
+- `back` — return to previous moment
+- `compute` — evaluate formulas, write results to state, then navigate
 
-- **Non-technical founders** building MVPs and early-stage products
-- **Product managers and designers** who want something real to test, not a Figma prototype
-- **Solo builders and indie hackers** who think in product flows, not code
-- **Small agency teams** building client projects quickly
+**Effects:**
+- `set-values` — write state on action
+- `append-list` — add item to array state
 
-44.4% of vibe coding platforms' stated value is "enabling non-technical founders to build products." This is the user Momentum is designed for.
+### Branch Moments
 
----
+Conditional paths (success/failure, choice variants) are hidden by default to keep the canvas clean.
 
-## Part 5: Competitive Positioning
-
-### The landscape
-
-| | Lovable | Bolt.new | Base44 | v0 | Momentum |
-|---|---|---|---|---|---|
-| **Generates full app** | ✓ | ✓ | ✓ | Partial | ✓ |
-| **Visual flow map** | ✗ | ✗ | ✗ | ✗ | ✓ |
-| **Targeted per-screen editing** | ✗ | ✗ | ✗ | ✗ | ✓ |
-| **Shareable app URL** | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Usage analytics on the map** | ✗ | ✗ | ✗ | ✗ | Vision |
-| **Mobile + web** | Web only | Web only | Web only | Web only | Both |
-
-### How each competitor fails at the core problem
-
-**Lovable** — Beautiful output, fastest to first version. But every edit is a full-context re-generation. At scale, it degrades. Context is lost across sessions. Nothing is addressable.
-
-**Bolt.new** — Code-first, developer-friendly. Gives you the actual codebase. But the codebase is the control layer — which means non-technical founders hit a wall quickly, and re-prompting a codebase has all the same structural risks.
-
-**Base44** — Best out-of-the-box for non-developers. Auth, backend, and database included. But same re-prompting model. No structural address system. Change one thing, risk something else.
-
-**v0** — Exceptional UI generation. But it generates components, not apps. You still need to connect the logic, build the routing, and deploy a backend separately. It is a design tool, not a builder.
-
-**Bubble** — The legacy leader. Visual and structured, but it predates AI generation and feels like it. Steep learning curve. Not prompt-native.
-
-### What Momentum does that none of them do
-
-**The map.** Every other tool gives you an output. Momentum gives you an output and a structured, visual, addressable representation of the app's flows — generated at the same time, always in sync.
-
-The map is not a visualization of the code. It is the contract between generation, editing, and (eventually) runtime behavior. It is what makes targeted editing possible. It is what will eventually make analytics graph-native.
-
-No current competitor has this. None of them are building toward it. Their architecture does not support it — they would have to be redesigned from scratch.
-
----
-
-## Part 6: The Product Today
-
-### What exists as of March 2026
-
-**Prompt → Journey Map generation**
-- User describes an app in plain language
-- Claude (Sonnet 4.6 with extended thinking) generates a structured AppMap
-- AppMap contains: journeys, moments, edges, state schema, screen specs
-- Streaming generation with live progress feedback
-- Mobile or web platform selection
-- Upload existing codebase (.zip) → analyzed and mapped
-
-**Visual Canvas**
-- React Flow canvas renders all moments as nodes
-- Color-coded by journey
-- Branch nodes (conditional paths) expand on click
-- Drag-and-drop node repositioning
-- Bidirectional sync between canvas nodes and running app
-
-**Running App Preview (inline)**
-- After generation, a real working HTML app is built by Claude
-- Renders in an iframe alongside the canvas (left = map, right = app)
-- Clicking a canvas node navigates the app to that screen
-- Navigating the app highlights the active node on the canvas
-- Mobile: phone frame shell. Web: browser frame shell.
-
-**Moment Editing**
-- Click any node → edit panel opens
-- Type a change in plain English → only that moment updates
-- Edit flags downstream moments that may be affected
-- Changes reflected immediately in the running app
-
-**App Sharing**
-- "Build & Share" generates a shareable URL (Vercel Blob)
-- Anyone with the link can use the app — no login required
-
-**Project Persistence**
-- Projects auto-save to localStorage
-- Project browser for returning users
-- Supabase session storage for runtime state
-
-**Production Logging**
-- All warnings and errors from live sessions logged to Supabase
-- Admin log viewer at `/admin/logs` with filter, time-ago, and expandable data
-- Auto-refreshes every 15 seconds
-
-**Platform Support**
-- Mobile-first: phone frame, mobile UX patterns
-- Web: browser chrome, desktop layouts, data-dense components
-
-### Tech stack
-
-- **Framework**: Next.js 16 (App Router) + TypeScript
-- **Canvas**: @xyflow/react (React Flow v12)
-- **State**: Zustand (persisted to localStorage)
-- **UI**: shadcn/ui + Tailwind CSS v4
-- **AI**: Anthropic SDK (claude-sonnet-4-6 with extended thinking for generation)
-- **Persistence**: Supabase (sessions, logs)
-- **Storage**: Vercel Blob (shareable app HTML)
-- **Deployment**: Vercel
-
-### Key architectural concept: the AppMap
-
-The AppMap is the central data structure. It contains:
-
+Example:
 ```
-AppMap {
-  appName, appDescription, appPlatform
-  stateSchema[]        — all stateful fields the app tracks
-  initialState{}       — default values
-  journeys[]           — named user flows
-  moments[]            — individual steps (ui/ai/data/auth)
-  edges[]              — directed connections between moments
-}
-
-Moment {
-  id, label, type, journeyId
-  description, preview
-  position { x, y }   — location on canvas
-  screenSpec           — structured screen definition (components + actions)
-  branchOf             — optional: this node is a branch variant of another
-  promptTemplate       — for AI moments: the Claude prompt that runs here
-  componentCode        — generated app code for this screen
-}
+fitness-assessment
+  └─ goal-beginner (branchOf: fitness-assessment)
+  └─ goal-intermediate (branchOf: fitness-assessment)
+  └─ goal-advanced (branchOf: fitness-assessment)
+  └─ goal-athlete (branchOf: fitness-assessment)
 ```
 
-The AppMap is not just a canvas artifact. It is the contract between generation, editing, runtime, and (eventually) intelligence. Every layer reads from and writes to the same structure.
+When `fitness-assessment` is active, all four branch options become visible.  
+When `goal-beginner` is active, its own substeps expand to the right in a horizontal journey.
+
+Branches lay out **left-to-right** from parent position (not downward), so flows read as progressions.
 
 ---
 
-## Part 7: The Vision
+## Current Product State (What's Live)
 
-### The full platform: three layers
+### 1. Generation System
 
-**Layer 1 — The Canvas (built)**
-The authoring surface. The visual map where journeys are built and edited. The Canvas is not documentation — it is the operating interface for the app.
+**Input paths:**
+- Natural language description (with platform choice)
+- Codebase upload (zip analysis and reverse mapping)
 
-**Layer 2 — The Runtime (in progress)**
-The execution engine that makes the map real. The Runtime takes the Journey Map and runs it as a live, interactive application. In the current version, it is a stateful prototype runtime. In the long-term version, it is a production-grade application runtime with real auth, data, and backend integrations.
+**Process:**
+- Primary generation: extended thinking mode, rich output
+- Fallback 1: compact mode (stricter schema, smaller output)
+- Fallback 2: starter scaffold (minimal valid map)
 
-**Layer 3 — The Intelligence Layer (vision)**
-The feedback loop that connects real user behavior back to the map. Every user interaction in the running app maps to a specific moment and edge. Drop-off, friction, and rage-clicks surface as visual signals on the Canvas — on the specific node that needs attention. The user sees the problem, clicks the node, fixes it, and commits.
+**Output:**
+- Normalized `AppMap` with journeys, moments, edges
+- Structured `screenSpec` for each moment
+- Auto-derived `branchOf` relationships from branch actions
+- Auto-filled edges from action targets
 
-### Why the Intelligence Layer is the real moat
+**Status visibility:**
+- Streaming progress log in UI
+- Fallback reasons surfaced as warnings with detail
+- Explicit error if stream closes without result
 
-Every analytics tool today — Mixpanel, Amplitude, PostHog — shows you aggregate events on dashboards. They tell you a metric went down. They do not tell you which specific part of the product to fix.
+### 2. Visual Canvas
 
-Momentum's Intelligence Layer would answer a different question: *not "what happened?" but "which node do I fix first?"*
+**Features:**
+- React Flow–based graph with journey grouping
+- Moments as nodes, edges as connections
+- Color coding by journey (consistent palette)
+- Branch visibility derived from active moment (no manual toggle state)
+- Horizontal branch layout (reads left-to-right like a flow)
+- Bird's-eye view mode (journey boxes only)
+- Journey/Screens/Data Flow view modes
+- Minimap, zoom controls, fit-to-selection
+- Selection syncs with runtime preview and side panel
 
-That is a category-defining capability. It closes the loop between product observation and product action inside a single interface.
+**Interaction:**
+- Single-click node → select for editing
+- Double-click node → fit view to node + neighbors
+- Double-click journey group → zoom into that journey
+- Click pane → deselect
 
-### Runtime maturity model
+### 3. Runtime & Preview
 
-| Version | Goal | Status |
-|---|---|---|
-| V1 | Make the map executable as a stateful prototype | Current |
-| V2 | Shareable, stable prototype links with real state persistence | Next |
-| V3 | Production-grade runtime with auth, data, and deployment | 12-18 months |
-| V4 | Intelligence-native: behavior surfaces on the map itself | 24+ months |
+**MobileRuntime:**
+- Interprets `screenSpec` into real UI
+- Holds session state (values persist across navigation)
+- Executes actions (`navigate`, `branch`, `back`, `compute`)
+- Applies effects (`set-values`, `append-list`)
+- Auto-runs AI moments with deterministic stubs in demo mode
+- Scales preview to fit container (phone shell or web chrome)
 
----
+**ReactRuntime:**
+- Persistent iframe shell for generated React components
+- Falls back to `MobileRuntime` when only `screenSpec` exists
+- Handles `mockHtml` for static demo screens (legacy path)
+- Message-based navigation sync with canvas
 
-## Part 8: Business Model (Thinking)
+**Component Preview (Panel):**
+- Renders generated `componentCode` in sandboxed iframe
+- Shows `MobileRuntime` for `screenSpec`-only moments
+- Falls back to streaming mock generation when needed
 
-### How others price
+### 4. Editing System
 
-- **Lovable**: $25/mo (starter), $100/mo (pro), enterprise custom
-- **Bolt.new**: Token-based + subscription (~$20/mo)
-- **Replit**: $25/mo (core), $40/mo (pro), enterprise
-- **Base44**: $29/mo to enterprise (pre-acquisition)
+**Scoped Edits:**
+- Select moment → describe change in natural language
+- Optional scope hints: amounts, headlines, buttons, layout
+- Model receives moment context, journey context, graph neighbors, state schema
+- Parallel updates: moment metadata + regenerated component/mock
 
-### Where Momentum fits
+**Downstream Propagation:**
+- When edit affects shared state, system flags connected moments
+- Background batch refresh updates affected moment descriptions
+- User can review first affected screen before accepting changes
 
-The natural pricing model mirrors the value layers:
+**Safety:**
+- Session-level revert (restores previous `componentCode` and `screenSpec`)
+- Edit overlay prevents double-submission
+- Invalid output doesn't replace valid screens
 
-**Free tier** — generate up to 3 apps, see the map, try the editor
-**Builder ($29/mo)** — unlimited apps, shareable URLs, project history
-**Team ($99/mo)** — multi-user, shared projects, custom domains
-**Enterprise (custom)** — SSO, deployment pipelines, analytics layer, SLA
+### 5. Build & Share
 
-The Intelligence Layer (V4) is likely the enterprise upsell: "understand your users through your map, not a separate analytics dashboard."
+**Build Pipeline:**
+- Generates React components for all top-level moments
+- Parallel generation with per-screen status tracking
+- Handles partial failures gracefully
+- Returns shareable app artifact
 
-### Potential acquirers / strategic fits
+**Share:**
+- Hosted URL for built app
+- Modal with copy link + open in new tab
 
-| Company | Why they'd want this |
-|---|---|
-| Figma | Figma is moving toward executability. A graph-native app runtime is exactly what they're missing. |
-| Notion | Notion wants to become a product development surface. The map model fits their "connected workspace" thesis. |
-| Vercel | They have v0 for UI. They need the journey layer and the runtime to complete a full app builder. |
-| Atlassian | They own the product development workflow (Jira, Confluence). A builder that maps flows is a natural fit. |
-| Salesforce | They want to own the full build-deploy-observe loop for business apps. |
+### 6. Persistence & Projects
 
----
-
-## Part 9: Open Strategic Questions
-
-These are the real questions worth discussing with advisors and LLMs:
-
-**1. What is the right wedge user?**
-Non-technical founders are the most obvious user, but they also have the shortest retention if the app doesn't feel polished. Product managers and technical designers may be more reliable early adopters — they understand flow-based thinking naturally.
-
-**2. How do we talk about the map without sounding like a workflow tool?**
-The map is the differentiator, but "visual flow map" sounds like a process documentation tool (Miro, Lucidchart). The language needs to communicate that the map is alive — it runs the app, it reflects user behavior, it is the control surface.
-
-**3. What is the right scope for V1 targeting?**
-The full vision is large. The narrow wedge that could win fast: **non-technical founders building internal tools and lightweight SaaS products**. Internal tools are a proven no-code/low-code use case (Retool, Glide) and the map model is especially compelling when multiple people need to understand and change the app.
-
-**4. Does the intelligence layer require scale, or can it be useful at small user counts?**
-A/B experiments on individual moments could be valuable with as few as 100-200 sessions. "Which onboarding variant has better completion?" mapped to two nodes on the canvas could be a compelling V2 feature long before you need Mixpanel-scale data.
-
-**5. How does Momentum stay defensible as Lovable adds structure?**
-Lovable is at $200M ARR and growing fast. They will eventually add some form of structural editing. The moat for Momentum is: (a) the map is generative — it appears automatically, not as a secondary feature; (b) the Intelligence Layer makes the map richer over time; (c) the edit model is architecturally different, not a UI feature on top of the same codebase approach.
-
-**6. Interpreter vs. codegen — which direction?**
-Current: interpreter (screenSpec → MobileRuntime). Longer term: codegen (AppMap → real React/TypeScript files). The tradeoff is editability vs. ownership. The interpreter is better for targeted editing; codegen is better for developer handoff and deployment. Recommended path: interpreter through V2, then add codegen export as a parallel track.
-
-**7. What does "the build" feel like vs. Lovable?**
-This is a live product concern. Lovable's generation produces beautiful, polished UI. Momentum's generated app quality needs to match or exceed that standard — otherwise the map advantage is undermined by output quality. The current HTML generation via build-app is functional but not design-leading.
-
----
-
-## Part 10: Talking Points
-
-### For LLM consultation
-
-> *"Momentum is a graph-native AI app builder. The core insight is that AI-built software needs structural addresses so edits can be targeted and safe. The first prompt generates both a runnable app and a visual journey map. Every subsequent edit targets a specific node on that map. The long-term vision includes a third layer: an intelligence system that maps real user behavior back to the specific nodes that need attention."*
-
-### For investor conversations
-
-> *"The vibe coding market is at $4.7B and growing 32% annually. The leading tools — Lovable at $200M ARR, Replit at $265M ARR — have proven the demand. But they all share the same structural flaw: re-prompting a complex app breaks things. Momentum's thesis is that the next generation of AI builders will win on controlled iteration, not faster first generation. The map is the mechanism."*
-
-### For user conversations
-
-> *"You know how when you use Lovable or Bolt and you ask it to change one thing and something else breaks? That happens because the AI has no idea what 'one thing' means — everything is one big blob to it. Momentum fixes that by giving every screen and flow a specific address on a map. You click the thing you want to change, change just that, and everything else stays exactly as it was."*
-
-### The single most important sentence
-
-> *"Other AI builders generate software. Momentum makes it editable."*
+- Client-side project storage (Zustand + localStorage)
+- Project listing with last-modified sorting
+- Active project auto-saves on map/build changes
+- Optional backend integration for team/cloud sync
 
 ---
 
-## Part 11: What To Ask An Advisor
+## What Momentum Does Differently
 
-When sharing this doc with a technical advisor, product advisor, or investor, the most productive questions are:
+### Comparison: Momentum vs. Typical AI Builders
 
-1. **On the map model**: Does the journey/moment graph feel like the right abstraction for non-technical users, or is it too developer-brained?
+| Dimension | Typical AI Builders | Momentum |
+|-----------|---------------------|----------|
+| **First generation** | Fast, polished | Fast, structured |
+| **Structure visibility** | Hidden in codebase | Visual graph (AppMap) |
+| **Edit model** | Re-prompt entire app | Select node, edit that moment |
+| **Scope control** | Broad inference | Explicit moment boundaries |
+| **Downstream impact** | Discover breakage after | Flagged before commit |
+| **Analytics (vision)** | Separate dashboard | On the graph itself |
+| **Best for** | Fast prototypes | Sustained iteration |
 
-2. **On competitive timing**: Lovable, Replit, and Bolt all have massive distribution advantages. What is the fastest path to a wedge that is defensible against them adding a "map view" feature?
+### Structural Differentiator
 
-3. **On the runtime**: Should Momentum stay interpreter-first and build depth there, or should it pivot to codegen output (real React/TS) to feel more "real" to developers?
+The **journey map** is not post-hoc documentation. It's:
+- Generated alongside the app
+- The contract for editing
+- The runtime execution model
+- The future analytics surface
 
-4. **On go-to-market**: Internal tools vs. consumer SaaS vs. AI-native apps — which user segment has the highest tolerance for switching from an existing tool, and the most natural use for a map-based edit model?
-
-5. **On the intelligence layer**: Is there a way to make node-level analytics valuable with small user counts (100-500 sessions), so it becomes a selling point in V2 rather than a V4 feature?
-
-6. **On fundraising readiness**: Given Lovable's $6.6B valuation and Replit's $9B valuation, what does Momentum need to demonstrate to be fundable at a meaningful valuation — and how long does that take from current state?
+Competitors built for monolithic regeneration would need **architectural refoundation** to replicate this, not just UI parity.
 
 ---
 
-## Appendix A: Key Files In The Codebase
+## Market Positioning
 
-```
-app/app/page.tsx              — Main workspace (canvas + app preview)
-app/app/launch/page.tsx       — Full-screen launch view
-app/api/generate/route.ts     — Description → AppMap (SSE streaming)
-app/api/build-app/route.ts    — AppMap → real HTML app (Claude)
-app/api/edit-moment/route.ts  — Natural language edit → moment patch
-app/api/run-moment/route.ts   — AI moment execution (promptTemplate → response)
-components/Canvas.tsx         — React Flow canvas
-components/MomentNode.tsx     — Canvas node card
-components/MomentPanel.tsx    — Right panel (inspect + edit a moment)
-components/AppPreview.tsx     — Inline iframe app preview (phone/browser shell)
-components/runtime/MobileRuntime.tsx  — Interpreter-based runtime (mobile + web)
-lib/types.ts                  — AppMap, Moment, Journey, FlowEdge types
-lib/store.ts                  — Zustand store
-lib/runtime.ts                — normalizeRuntimeAppMap, autoDeriveBranchOf
-```
+### Category
 
-## Appendix B: Key Metrics To Track
+AI-assisted app builder / intelligent no-code hybrid
 
-| Metric | Why It Matters |
-|---|---|
-| Time to first generated map | Core product experience; should feel fast |
-| Generation success rate | % of prompts that produce a valid AppMap |
-| Moments edited per session | Proxy for whether users are actually iterating, not just generating |
-| Session-to-share rate | % of users who click "Build & Share" — intent signal |
-| Return rate (D7, D30) | Measures stickiness; are they building over time or one-and-done? |
-| Map size at churn | At what complexity do users abandon? (Tests the core thesis) |
+### TAM Context
 
-## Appendix C: The Founding Insight In One Paragraph
+Low-code/no-code market: $13B+ and growing (Gartner, Forrester projections).  
+AI coding assistance adoption accelerating across non-technical and technical users.  
+Multiple well-funded AI builder competitors validate demand and category growth.
 
-The fundamental problem with AI-built software is not that AI generates bad first versions. It generates surprisingly good first versions. The problem is that every subsequent change is a guess. The AI does not know what it built in structural terms. It cannot scope a change to one part because it has no concept of parts. The only fix is to make structure explicit — to give every part of the app an address — so that when you want to change something, you change exactly that thing, and nothing else has to be touched. That is what the Journey Map is. That is why Momentum exists.
+### Target Customers
+
+**Primary:**
+- Non-technical founders who think in flows, not code
+- Product/design operators prototyping real software
+- Indie builders and consultants shipping client tools
+
+**Secondary (future):**
+- Small engineering teams needing rapid iteration
+- Enterprise teams replacing legacy internal tools
+
+**Shared need:** Change this specific part safely without destabilizing the rest.
+
+### Competitive Landscape
+
+**Direct:**
+- Lovable (polished first-gen, prompt-based iteration)
+- Bolt (code-forward, full-context edits)
+- Replit Agent (codebase generation, chat-based changes)
+- Base44 (mobile-first AI builder)
+
+**Adjacent:**
+- v0 (component generation, not full apps)
+- Cursor/Codeium (code assistants, not builders)
+- Traditional no-code (Bubble, Webflow — structured but not AI-native)
+
+**Momentum's wedge:** Graph-native structure that persists across edits, not just faster generation.
+
+---
+
+## Technical Stack
+
+### Core Technologies
+
+**Frontend:**
+- Next.js 15 (App Router) — framework
+- React 19 — UI library
+- TypeScript — type safety
+- Tailwind CSS v4 — styling
+- `@xyflow/react` (React Flow v12) — canvas
+- Zustand — client state
+- shadcn/ui patterns — component library
+
+**Backend/APIs:**
+- Next.js API routes
+- Anthropic SDK — Claude Sonnet 4 for generation/editing
+- Vercel (hosting)
+- Optional: Supabase (auth, DB, logging when configured)
+
+**Build & Runtime:**
+- esbuild (component bundling)
+- Babel standalone (browser JSX transform)
+- React + ReactDOM CDN (iframe preview)
+- Tailwind CDN (preview styling)
+
+### Key Architecture Patterns
+
+**State Management:**
+- `AppMap` in Zustand store with localStorage persistence
+- Session state in `MobileRuntime` (per-project when configured)
+- Separate `activeMomentId` (runtime cursor) and `selectedMomentId` (canvas selection)
+
+**Generation Flow:**
+- Streaming SSE from `/api/generate`
+- Primary: extended thinking mode (40K tokens, 9K thinking budget)
+- Fallback: compact mode (15K tokens, no thinking)
+- Last resort: starter scaffold (hardcoded minimal map)
+- Client handles final chunk flush to prevent dropped results
+
+**Canvas Architecture:**
+- `deriveExpandedBranchAnchor` from `activeMomentId` (no separate toggle state)
+- Branch visibility = pure function of active context
+- Horizontal layout for all `branchOf` moments
+- Journey bounds computed from visible moments
+- Node/edge dimming based on selection and branch focus
+
+**Runtime Architecture:**
+- Interpreter pattern: `screenSpec` → rendered UI
+- Session state initialized from `AppMap.initialState`
+- Actions apply effects then navigate
+- Sync guard: only update from `startMomentId` when prop actually changes (avoids clobbering internal navigation)
+
+---
+
+## Detailed Feature Breakdown
+
+### A. Prompt-to-Map Generation
+
+**Capabilities:**
+- Single natural-language input → full application graph
+- Journey inference from description
+- Moment boundary detection
+- Type assignment (ui/ai/data/auth)
+- Auto-layout (journeys on rows, moments spaced 280px)
+- Branch relationship inference from conditional patterns
+- State schema extraction
+- Screen spec generation with real interactive components
+
+**Quality Mechanisms:**
+- Extended thinking for complex apps
+- Validation pass repairs common issues (missing edges, shallow screens)
+- Compact fallback for parse failures
+- Explicit error states with retry options
+
+**Example Output:**
+- App: "AI fitness coach with workout generation and progress tracking"
+- Result: 4 journeys (Onboarding, Daily Workout, Progress, Nutrition), 30 moments, 20 edges
+- Includes: branch paths for fitness levels, AI workout generator, nutrition suggestions
+- State schema: user profile, plan settings, workout history, nutrition log
+
+### B. Visual Canvas
+
+**Layout Intelligence:**
+- Journeys as color-coded grouped regions
+- Moments positioned to avoid overlaps
+- Branch moments hidden until parent is active
+- All branches flow horizontally from parent (left-to-right readability)
+- Cross-journey edges shown with distinct styling
+
+**View Modes:**
+1. **Overview** — Journey boxes only (bird's eye)
+2. **Journey** — Compact moment cards in journey frames
+3. **Screens** — Full moment details + edge labels
+4. **Data Flow** — Maximum detail + data flow annotations
+
+**Interaction Details:**
+- Selection state separate from active runtime cursor
+- Auto-pan to active moment when runtime navigates
+- Fit view on node click when it has branches (shows parent + branch column)
+- Hint overlay explains controls contextually
+
+**Branch Visibility Logic:**
+- If active moment has branches → show those branches
+- If active moment is under a branch → show that branch's siblings
+- Siblings along ancestry path stay visible for context
+- Pure derivation (no manual toggle that can desync)
+
+### C. Runtime Execution
+
+**Interpreter Pattern:**
+- Executes `screenSpec` directly (no codegen step)
+- Session state holds all `{{templated}}` values
+- Components render with resolved templates
+- Actions enforce `requiredKeys` before enabling
+- Effects write state before navigation
+- Branch actions choose target based on state value
+- Back navigation uses history stack
+
+**Component Rendering:**
+- Choice cards, chip groups, inputs write state on interaction
+- Stats grids, summary cards, notices display templated values
+- Hero components support badges, alignment, body text
+- Spacers for layout control
+
+**Action Execution:**
+- `navigate` → go to target moment
+- `branch` → read `branchKey` state, match against branches, navigate to matched target (or fallback)
+- `back` → pop history, navigate to previous moment
+- `compute` → evaluate JS formulas using state as variables, write results, then navigate
+
+**State Management:**
+- Schema-driven initialization (defaultValues from `stateSchema`)
+- Template resolution with dot-path support (`{{profile.name}}`)
+- Array operations (`append-list` for activity tracking)
+- Effects chain (can set multiple values in one action)
+
+**AI Moment Handling:**
+- Auto-trigger on navigation if `type === 'ai'` and `promptTemplate` exists
+- Demo mode: instant deterministic stubs (no API call)
+- Production mode: POST to `/api/run-moment` with template + current state
+- Response written to `responseKey` in state
+- Subsequent screens can display `{{responseKey}}` in notices/cards
+
+### D. Editing & Iteration
+
+**Moment-Scoped Edit Flow:**
+
+1. User selects moment on canvas
+2. Panel opens with preview + edit interface
+3. User describes change ("make the button green", "add a progress bar")
+4. Optional scope chips narrow focus (amounts, headlines, buttons, layout)
+5. Client sends: moment, change text, journey context, graph neighbors, state schema
+6. Model receives digest of current implementation + request
+7. Model returns: updated metadata + new component/mock
+8. Client validates output (prevents blank screens)
+9. Moment updates, preview refreshes
+10. If edit touched shared state, downstream moments flagged
+
+**Scope Chips:**
+- **Amounts:** steer model to change numbers, prices, quantities only
+- **Headlines:** focus on titles, subtitles, labels
+- **Buttons:** target CTAs, action labels, navigation text
+- **Layout:** adjust spacing, ordering, grouping
+
+**Downstream Propagation:**
+- System detects when edit changes state keys referenced by other moments
+- Affected moments marked with amber flag + reason
+- Background batch can refresh those moments' descriptions/previews
+- User can review first affected moment before accepting
+- Option to skip propagation if change is cosmetic
+
+**Safety Features:**
+- Session undo buffer (one-level revert)
+- Loading overlay prevents double-submission
+- Edit input disabled while processing
+- Keyboard shortcut (⌘+Enter) for fast apply
+
+### E. Build & Share
+
+**Build Pipeline:**
+- Generates React component for each moment
+- Uses moment context, journey context, neighbors, state schema
+- Parallel generation (all moments at once)
+- Per-moment status tracking (building/done/error)
+- Streaming SSE with progress updates
+- Partial success handling (some moments build, some fail)
+
+**Component Generation Prompt Pattern:**
+- App description and platform
+- State schema with current values
+- Moment type, label, description, screenSpec
+- Incoming/outgoing edges (navigation context)
+- All other screens in journey (architectural consistency)
+- Theme color derived from app description
+
+**Share Output:**
+- Hosted static app (all screens bundled)
+- Shareable URL
+- Copy link + open in new tab
+- Modal with completion celebration
+
+---
+
+## Competitive Deep Dive
+
+### Lovable
+
+**Strengths:**
+- Extremely polished first output
+- Fast iteration loop
+- Strong design quality
+
+**Weakness Momentum targets:**
+- No persistent flow structure
+- Re-prompts touch broad surfaces
+- Hard to scope changes to specific screens
+
+### Bolt (StackBlitz)
+
+**Strengths:**
+- Full codebase ownership
+- Real code editing
+- Live preview
+
+**Weakness Momentum targets:**
+- Code-first (harder for non-technical users)
+- No visual flow map
+- Scoping requires manual file/function targeting
+
+### Replit Agent
+
+**Strengths:**
+- Integrated environment
+- Chat-based iteration
+
+**Weakness Momentum targets:**
+- No visual structure for flows
+- Changes still inferred from chat context
+- Hard to isolate "this screen only"
+
+### Base44
+
+**Strengths:**
+- Mobile-first
+- Fast generation
+
+**Weakness Momentum targets:**
+- Limited structural visibility
+- Iteration model still prompt-based
+
+### Traditional No-Code (Bubble, Webflow)
+
+**Strengths:**
+- Explicit structure
+- Visual editing
+
+**Weakness Momentum targets:**
+- Not AI-native (manual assembly)
+- Steeper learning curve
+- Slower iteration speed
+
+---
+
+## Strategic Moat
+
+### Short-Term Defensibility
+
+1. **Systems integration** — Canvas, runtime, editing, and build all share `AppMap` contract
+2. **Iteration data** — Early proof of scoped edit reliability builds brand trust
+3. **User muscle memory** — Once teams learn graph-based iteration, switching cost is high
+
+### Long-Term Defensibility
+
+1. **Intelligence layer** — Analytics that resolve to moments/edges (not generic events) creates lock-in
+2. **Execution depth** — As runtime matures to production-grade, switching means losing the deployment model
+3. **Network effects** — Teams sharing maps, templates, and journey patterns
+
+### Why This Is Hard to Replicate
+
+Competitors optimized for monolithic regeneration would need to:
+- Redesign generation to produce durable structure
+- Build graph-aware editing systems
+- Couple runtime behavior to that same graph
+- Retrofit analytics to map back to nodes
+
+That's not a UI feature. It's an architectural re-foundation.
+
+---
+
+## Go-to-Market Strategy
+
+### Phase 1 — Product-Market Fit (Current)
+
+**Target:**
+- Early adopters who feel iteration pain acutely
+- Non-technical founders
+- Design/product operators
+
+**Channels:**
+- Product Hunt launch
+- Twitter/X (builder communities)
+- Direct outreach to YC/indie hacker communities
+- Content: "How to iterate on AI-built apps without breaking everything"
+
+**Success Metrics:**
+- 100 active projects
+- 5+ edits per retained user
+- 30% build/share conversion
+- Positive qualitative feedback on iteration confidence
+
+### Phase 2 — Growth (6-12 months)
+
+**Target:**
+- Small teams (2-5 people)
+- Agencies building client tools
+- Internal tool builders at scale-ups
+
+**Channels:**
+- SEO (comparison content vs. Lovable/Bolt)
+- Partnerships with design tools
+- Team plan launch
+
+**Success Metrics:**
+- 1K+ active projects
+- 20% month-over-month growth
+- Team tier adoption
+- Repeat usage (D7/D30 retention)
+
+### Phase 3 — Scale (12-24 months)
+
+**Target:**
+- Enterprise internal tools
+- Product teams at mid-size companies
+
+**Channels:**
+- Enterprise sales
+- Integration partnerships
+- Graph-native analytics as differentiator
+
+**Success Metrics:**
+- Enterprise deals
+- Map-linked intelligence proving value
+- Expansion revenue from analytics tier
+
+---
+
+## Business Model Detail
+
+### Pricing Structure (Directional)
+
+**Free Tier:**
+- 3 map generations/month
+- 10 edits/month
+- 1 active project
+- Public sharing only
+
+**Builder Tier ($24/month):**
+- Unlimited generations
+- Unlimited edits
+- 10 active projects
+- Build & share
+- Revision history (7 days)
+
+**Team Tier ($79/month, 3 seats):**
+- All Builder features
+- Collaboration (shared projects)
+- 30-day revision history
+- Priority support
+- Team analytics dashboard
+
+**Enterprise (Custom):**
+- All Team features
+- Graph-native behavior analytics
+- SSO, SAML
+- Dedicated deployment environments
+- SLA + support
+- Custom integrations
+
+### Revenue Levers
+
+1. **Iteration volume** — More edits = more value
+2. **Collaboration** — Teams pay for shared maps
+3. **Analytics** — Graph-native intelligence commands premium
+4. **Deployment** — Production runtime features drive enterprise deals
+
+### Unit Economics (Estimates)
+
+**Costs per user/month:**
+- API costs (Claude): ~$3-8 depending on usage
+- Hosting: ~$0.50-2
+- Infrastructure: ~$1
+
+**Target margin:** 70%+ at scale
+
+**CAC target:** <$100 (PLG motion)  
+**Payback period:** <3 months
+
+---
+
+## Key Metrics & Goals
+
+### Product Metrics
+
+| Metric | Current Target | Why It Matters |
+|--------|----------------|----------------|
+| Generation success rate | >85% | Core UX quality |
+| Time to first valid map | <10s | Activation friction |
+| Edits per active project | >5 | Iteration depth proof |
+| Build/share conversion | >20% | Intent to distribute |
+| D7 retention | >40% | Stickiness signal |
+| D30 retention | >25% | Long-term value |
+
+### Business Metrics (Future)
+
+| Metric | Target (Year 1) | Target (Year 2) |
+|--------|-----------------|-----------------|
+| Active users | 1K | 10K |
+| Paying users | 100 | 1K |
+| MRR | $5K | $50K |
+| Churn | <10%/mo | <7%/mo |
+
+---
+
+## Roadmap (Execution Detail)
+
+### Q2 2026 — Core Reliability
+
+**Priorities:**
+- Fix remaining SSE/stream bugs
+- Harden scoped edit reliability
+- Improve generation output quality
+- Add basic map editing (add/delete/rewire moments)
+
+**Success criteria:**
+- 90%+ generation success rate
+- Zero false "success" states with empty maps
+- Demo fully clickable without hacks
+
+### Q3 2026 — Team Features
+
+**Priorities:**
+- Multi-project collaboration
+- Revision history (30-day)
+- Better persistence (cloud sync option)
+- Team plan launch
+
+**Success criteria:**
+- 10+ teams on Team tier
+- 50%+ D7 retention
+- Positive NPS from early teams
+
+### Q4 2026 — Runtime Depth
+
+**Priorities:**
+- Production auth integrations
+- Database/backend patterns
+- Stronger deployment path
+- Performance optimization
+
+**Success criteria:**
+- 5+ production apps running on Momentum runtime
+- <100ms action latency
+- Deployment reliability >99%
+
+### 2027 — Intelligence Layer
+
+**Priorities:**
+- Instrumentation for behavior tracking
+- Graph-native analytics dashboard
+- Drop-off/friction mapping to moments
+- Suggested fixes on flagged nodes
+
+**Success criteria:**
+- Analytics tier launched
+- 3+ enterprise customers using intelligence features
+- Proof that graph-native analytics drives retention
+
+---
+
+## Open Strategic Questions
+
+### Product
+
+1. Should we support code export or stay interpreter-only?
+2. What's the right balance between constrained reliability and generation freedom?
+3. How much backend/infra should we own vs. integrate?
+
+### Market
+
+1. Is the wedge "non-technical founders" or "small teams iterating fast"?
+2. Do we compete directly with Lovable or position as complementary?
+3. What's the right enterprise entry point (internal tools, agency partners)?
+
+### Execution
+
+1. What team size can ship runtime depth + intelligence in 12 months?
+2. Should we fundraise now or build to revenue first?
+3. What level of polish is required for Team tier launch?
+
+---
+
+## Risk Assessment
+
+### Product Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Generation quality variance | High | High | Validation passes, fallback modes, user testing |
+| Graph/runtime desync bugs | Medium | High | Robust sync guards, integration tests |
+| Edit scope creep (model touches too much) | Medium | Medium | Better prompting, scope validation |
+| Runtime performance at scale | Low | Medium | Profiling, caching, lazy loading |
+
+### Market Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Incumbent adds structure | Medium | High | Speed to intelligence layer, brand trust |
+| Market shifts to code-first | Low | Medium | Add export path, hybrid model |
+| User expectation mismatch | Medium | Medium | Clear messaging, better onboarding |
+
+### Execution Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Team bandwidth for roadmap | Medium | High | Ruthless prioritization, fundraise if needed |
+| API cost scaling | Low | Medium | Caching, tiered usage limits |
+| Quality bar too high for velocity | Medium | Low | Ship iterations, validate with users |
+
+---
+
+## Success Definition
+
+Momentum succeeds when:
+
+1. **Users trust iteration** — 5+ scoped edits per retained project
+2. **Structure proves valuable** — Graph visibility drives feature adoption
+3. **Runtime becomes real** — Production apps run on Momentum
+4. **Intelligence closes loop** — Behavior → graph → targeted fix
+
+If we achieve those, the business outcomes follow.
+
+---
+
+## Messaging Framework
+
+### Elevator Pitch (30 seconds)
+
+"Momentum is an AI app builder designed for iteration. One prompt generates your app and a visual map of every flow. Instead of re-prompting the whole app and hoping nothing breaks, you click a node and edit just that screen. The map keeps every change scoped and safe as your product grows."
+
+### Problem Statement
+
+"AI builders are great at first drafts. When you want to change something later, you re-prompt and the model touches everything. Three screens break. You fix those, something else drifts. Iteration feels like gambling."
+
+### Solution Statement
+
+"Momentum gives every screen and flow an address on a graph. Edits target that address. The map shows what connects, what depends on what, and what stays safe. You iterate with confidence instead of guessing."
+
+### Differentiation
+
+"Other AI builders optimize for generation speed. Momentum optimizes for safe, repeated editing. The graph is the difference."
+
+### Vision Statement
+
+"Over time, the graph becomes where you build, run, debug, and learn from user behavior — all in one place. Structure, execution, and intelligence share one model."
+
+---
+
+## Team & Roles (Ideal State)
+
+**Now (solo founder):**
+- Full-stack product development
+- Strategy and positioning
+
+**Next hire (when fundraising closes):**
+- Senior full-stack engineer (runtime depth + quality)
+
+**6-month team:**
+- Founder (product, strategy)
+- Senior engineer (runtime, infra)
+- Design/product engineer (canvas, editing UX)
+- Optional: growth/marketing
+
+**12-month team:**
+- Add: backend specialist (if we own infrastructure)
+- Add: data engineer (intelligence layer)
+- Add: growth lead
+
+---
+
+## Appendix: Technical Debt & Known Issues
+
+### Current Tech Debt
+
+1. **SSE stream handling** — Fixed recently, needs monitoring
+2. **Canvas performance** — Slows with >50 moments (needs virtualization)
+3. **Edit propagation** — Downstream refresh is separate flow (should be atomic)
+4. **State schema conflicts** — Manual resolution required when edits change field types
+5. **Mobile responsiveness** — Canvas requires desktop (not in V1 scope)
+
+### Prioritized for Q2
+
+- Canvas virtualization
+- Atomic edit propagation
+- Schema conflict resolution UI
+
+### Deferred
+
+- Mobile canvas support
+- Offline mode
+- Advanced graph algorithms (auto-layout optimization)
+
+---
+
+## Appendix: Reference Links
+
+- **Demo:** [momentai.app/app?demo=true](https://momentai.app/app?demo=true) (Pulse fitness coach, 30 moments, fully interactive)
+- **Repo:** github.com/AviLPA/momentai (private)
+- **Stack:** Next.js + React Flow + Anthropic
+- **Related docs:** `PRD.md` Part I (strategic source of truth), Part II (execution spec), `INVESTOR_ONEPAGER.md` (fundraising), `VISION_TECH.md` (long-term invariants)
+
+---
+
+*Strategy and scope: `PRD.md` Part I. Full product + technical narrative: this document.*
