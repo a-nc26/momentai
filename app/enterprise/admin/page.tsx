@@ -5,6 +5,18 @@ import { useRouter } from 'next/navigation';
 import { createEnterpriseSupabaseClient } from '@/lib/enterprise/auth';
 import type { EnterpriseSubmission, EnterpriseDataSource, EnterpriseCompany } from '@/lib/enterprise/types';
 
+const DEMO_SUBMISSIONS: EnterpriseSubmission[] = [
+  { id: '1', company_id: 'demo', builder_id: 'u1', app_name: 'Customer Escalation Tracker', app_description: 'Pulls at-risk accounts from Salesforce, lets CSMs add notes, sends weekly digest to VP', app_map_json: {} as never, data_contract_json: [{ source_name: 'Salesforce CRM', source_type: 'rest_api', operations: [{ type: 'read', resource: 'Account', reason: 'Load at-risk accounts' }, { type: 'read', resource: 'Opportunity', reason: 'Check deal status' }] }, { source_name: 'Company Postgres', source_type: 'postgres', operations: [{ type: 'write', resource: 'escalations', reason: 'Save CSM notes' }] }], status: 'pending', created_at: new Date(Date.now() - 2 * 3600000).toISOString(), updated_at: new Date().toISOString(), builder: { id: 'u1', auth_user_id: 'a1', company_id: 'demo', email: 'sarah@acme.com', full_name: 'Sarah Chen', role: 'builder', created_at: new Date().toISOString() } },
+  { id: '2', company_id: 'demo', builder_id: 'u2', app_name: 'Employee Onboarding Checklist', app_description: 'New hire completes checklist, IT gets notified on each step, manager approves access', app_map_json: {} as never, data_contract_json: [{ source_name: 'HR Database', source_type: 'postgres', operations: [{ type: 'read', resource: 'employees', reason: 'Load new hire details' }, { type: 'write', resource: 'onboarding_tasks', reason: 'Record completed tasks' }] }], status: 'pending', created_at: new Date(Date.now() - 24 * 3600000).toISOString(), updated_at: new Date().toISOString(), builder: { id: 'u2', auth_user_id: 'a2', company_id: 'demo', email: 'marcus@acme.com', full_name: 'Marcus Rivera', role: 'builder', created_at: new Date().toISOString() } },
+  { id: '3', company_id: 'demo', builder_id: 'u3', app_name: 'Vendor Invoice Approval', app_description: 'Finance team reviews and approves vendor invoices with multi-level sign-off', app_map_json: {} as never, data_contract_json: [{ source_name: 'Finance API', source_type: 'rest_api', operations: [{ type: 'read', resource: '/invoices', reason: 'Load pending invoices' }, { type: 'write', resource: '/invoices/approve', reason: 'Record approval decision' }] }], status: 'live', live_url: 'https://app.momentum.com/run/abc123', created_at: new Date(Date.now() - 7 * 86400000).toISOString(), updated_at: new Date().toISOString(), builder: { id: 'u3', auth_user_id: 'a3', company_id: 'demo', email: 'priya@acme.com', full_name: 'Priya Patel', role: 'builder', created_at: new Date().toISOString() } },
+  { id: '4', company_id: 'demo', builder_id: 'u1', app_name: 'Weekly Sales Pipeline Review', app_description: 'Automated weekly report pulling CRM data and surfacing deals that need attention', app_map_json: {} as never, data_contract_json: [], status: 'draft', created_at: new Date(Date.now() - 30 * 60000).toISOString(), updated_at: new Date().toISOString(), builder: { id: 'u1', auth_user_id: 'a1', company_id: 'demo', email: 'sarah@acme.com', full_name: 'Sarah Chen', role: 'builder', created_at: new Date().toISOString() } },
+];
+const DEMO_SOURCES: EnterpriseDataSource[] = [
+  { id: 's1', company_id: 'demo', name: 'Company Postgres', type: 'postgres', description: 'Main production database — customers, orders, employees', created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+  { id: 's2', company_id: 'demo', name: 'Salesforce CRM', type: 'rest_api', description: 'Sales pipeline, accounts, opportunities, contacts', created_at: new Date(Date.now() - 20 * 86400000).toISOString() },
+  { id: 's3', company_id: 'demo', name: 'HR Database', type: 'postgres', description: 'Employee records, org structure, payroll metadata', created_at: new Date(Date.now() - 15 * 86400000).toISOString() },
+];
+
 type Tab = 'pending' | 'all' | 'sources';
 type StatusFilter = 'all' | EnterpriseSubmission['status'];
 
@@ -77,7 +89,11 @@ export default function AdminPage() {
     const supabase = createEnterpriseSupabaseClient();
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) {
-        router.push('/enterprise');
+        // Demo mode — show mock data so the UI is visible without auth
+        setCompany({ id: 'demo', name: 'Acme Corp', domain: 'acme.com', created_at: new Date().toISOString() });
+        setSubmissions(DEMO_SUBMISSIONS);
+        setDataSources(DEMO_SOURCES);
+        setLoading(false);
         return;
       }
       setToken(session.access_token);
